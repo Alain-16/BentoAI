@@ -4,6 +4,7 @@ from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 from bentoai.api.deps import SettingsDeps
 from bentoai.config import get_settings
+from bentoai.shared.database import get_engine
 
 logger = logging.getLogger(__name__)
 
@@ -20,6 +21,8 @@ async def lifespan(app: FastAPI):
     yield
 
     logger.info("Shutting down %s", settings.app.name)
+
+    await get_engine().dispose()
 
 
 def create_app() -> FastAPI:

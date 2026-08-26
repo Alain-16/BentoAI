@@ -9,5 +9,5 @@ wheels/
 # Virtual environments
 .venv
 .env
-ai_shopping_platform_development_source_of_truth.md
+ai_shopping_platform_development_source_of_truth_reorganized.md
 reference.py
