@@ -3,6 +3,7 @@ from typing import Literal
 
 from pydantic import Field, PostgresDsn, SecretStr, model_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
+from functools import lru_cache
 
 
 DEV_PLACEHOLDER_SECRET="dev-secret-change-me"
@@ -158,3 +159,12 @@ class Settings(BaseSettings):
             raise ValueError("Invalid production configuration: " + "; ".join(problems))
 
         return self
+
+
+
+
+@lru_cache
+def get_settings() -> Settings:
+
+    return Settings()
+
