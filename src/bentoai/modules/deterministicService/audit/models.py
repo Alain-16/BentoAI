@@ -49,5 +49,5 @@ class AuditEvent(UUIDMixin, Base):
 
     __table_args__ = (
         
-        Index("ix_audit_events_mission_id_created_at", "mission_id", "created_at")
+        Index("ix_audit_events_mission_id_created_at", "mission_id", "created_at"),
     )

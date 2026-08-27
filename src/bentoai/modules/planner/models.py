@@ -9,6 +9,7 @@ from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from bentoai.shared.database import Base
 from bentoai.shared.mixins import TimestampMixin, UUIDMixin
+from bentoai.shared.mixins import _enum
 
 class MissionStatus(str, Enum):
 
@@ -46,7 +47,7 @@ class BasketStatus(str, Enum):
 
 class ShoppingMission(UUIDMixin, TimestampMixin,Base):
 
-    __tablename__ = "shopping_mission"
+    __tablename__ = "shopping_missions"
 
     user_id: Mapped[uuid.UUID] = mapped_column(
         ForeignKey("users.id", ondelete="CASCADE"), index=True

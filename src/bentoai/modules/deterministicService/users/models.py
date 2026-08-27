@@ -40,7 +40,7 @@ class OtpCode(UUIDMixin, TimestampMixin,Base):
     consumed_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
 
     __table_args__ = (
-        Index("ix_otp_codes_email_expires_at", "email", "expires_at")
+        Index("ix_otp_codes_email_expires_at", "email", "expires_at"),
     )
 
 
@@ -48,7 +48,7 @@ class RefreshToken(UUIDMixin,TimestampMixin,Base):
 
     __tablename__ = "refresh_tokens"
 
-    user_id: Mapped[uuid.UUID] = mapped_column(ForeignKey("user.id", ondelete="CASCADE"),index=True)
+    user_id: Mapped[uuid.UUID] = mapped_column(ForeignKey("users.id", ondelete="CASCADE"),index=True)
 
     token_hash: Mapped[str] = mapped_column(String(64), unique=True, index=True)
 
