@@ -127,7 +127,7 @@ class CommerceSettings(BaseSettings):
 
     search_limit: int = 20
 
-    max_candidates_per_requirements: int = 30
+    max_candidates_per_requirement: int = 30
 
     request_timeout_seconds: int = 30
 
