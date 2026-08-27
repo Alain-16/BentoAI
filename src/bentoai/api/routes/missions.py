@@ -64,3 +64,21 @@ async def get_requirements(
     except MissionNotFound:
         raise HTTPException(status.HTTP_404_NOT_FOUND, "Mission not found")
     return [RequirementRead.model_validate(r) for r in mission.requirements]
+
+
+@router.post("/{mission_id}/discover", response_model=MissionWithPlan)
+async def discover_products(mission_id: uuid.UUID, orchestrator:OrchestratorDep, user: CurrentUser) -> MissionWithPlan:
+
+
+    try:
+        mission, _ = await orchestrator.advance(
+            mission_id, user.id, expected_from=MissionStatus.SEARCHING
+        )
+
+    except MissionNotFound:
+        raise HTTPException(status.HTTP_404_NOT_FOUND, "Mission not found")
+    except (UnexpectedState, NoStepForState, InvalidTransition) as exc:
+        raise HTTPException(status.HTTP_409_CONFLICT, str(exc))
+
+    return MissionWithPlan.model_validate(mission)
+
