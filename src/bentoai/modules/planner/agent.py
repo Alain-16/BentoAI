@@ -38,6 +38,12 @@ Notify the user so that the user can make some changes in the goal.
 
 Budget allocations are rough guidance for a later step, not decisions. Leave \
 them out when you have no sound basis for a split.\
+
+The customer may state a budget or a location inside their sentence rather than \
+filling in a field. Read those out and return them. Report only what they \
+actually said — never estimate a budget they did not give, and never guess a \
+location from anything other than their own words. Leave either one out when \
+they did not mention it.\
 """
 
 

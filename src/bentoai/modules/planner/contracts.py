@@ -42,11 +42,20 @@ class PlannedRequirement(BaseModel):
         default=None, ge=0, description="Rough share of the budget for this item"
     )
 
+class ExtractedBudget(BaseModel):
+
+    amount: float = Field(ge=0, description="The number they mentioned")
+    currency: str = Field(description="currency code")
+
 
 class PlanningResult(BaseModel):
     """Everything the Planning Agent returns"""
 
     goal: str = Field(description="The customer's objective, restated clearly")
+
+    budget: ExtractedBudget | None = Field(default=None,description="only if the customer stated a budget")
+    location: str | None = Field(default=None, description="only if the customer said the location")
+
     constraints: list[PlannedConstraint] = Field(default_factory=list)
     preferences: list[PlannedPreference] = Field(default_factory=list)
     requirements: list[PlannedRequirement] = Field(default_factory=list)

@@ -16,10 +16,9 @@ class StepOutcome:
     notes: list[str] = field(default_factory=list)
 
 
-class workflowStep(Protocol):
+class WorkflowStep(Protocol):
 
     working_status: MissionStatus | None
 
     async def run(self,mission: ShoppingMission) -> StepOutcome:
         ...
-        

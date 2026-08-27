@@ -55,3 +55,5 @@ def create_app() -> FastAPI:
             "environment": settings.app.environment.value,
         }
     return app
+
+app = create_app()

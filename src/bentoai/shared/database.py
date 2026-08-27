@@ -39,7 +39,7 @@ def get_engine() -> AsyncEngine:
 
         pool_size = settings.db.pool_size,
 
-        max_over_flow=settings.db.max_overflow,
+        max_overflow=settings.db.max_overflow,
 
         pool_pre_ping = settings.db.pool_pre_ping,
     )

@@ -18,7 +18,7 @@ class User(UUIDMixin,TimestampMixin,Base):
 
     is_active: Mapped[bool] = mapped_column(Boolean, default=True,nullable=False)
 
-    refresh_token: Mapped[list["RefreshToken"]] = relationship(
+    refresh_tokens: Mapped[list["RefreshToken"]] = relationship(
         back_populates="user",cascade="all, delete-orphan"
     )
 

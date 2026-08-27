@@ -57,9 +57,19 @@ class PlanningStep:
         """
         mission.goal = result.goal
 
-        # Stored as JSON on the mission, which is what §8.3 prescribes for
-        # constraints and preferences: variable in shape, never joined against,
-        # and always read and written alongside the mission itself.
+        if mission.budget_amount is None and result.budget is not None:
+            mission.budget_amount = Decimal(str(result.budget.amount))
+            mission.budget_currency = result.budget.currency.upper()[:3]
+            logger.info(
+                "Budget %s %s read from the customer's own wording",
+                mission.budget_amount,
+                mission.budget_currency,
+            )
+
+        if not mission.location and result.location:
+            mission.location = result.location
+
+
         mission.constraints = {
             "items": [c.model_dump(mode="json") for c in result.constraints]
         }

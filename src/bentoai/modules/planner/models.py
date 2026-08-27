@@ -73,7 +73,7 @@ class ShoppingMission(UUIDMixin, TimestampMixin,Base):
     planning_metadata: Mapped[dict] = mapped_column(JSONB, default=dict, nullable=False)
 
     user: Mapped["User"] = relationship(back_populates="missions")
-    requirements: Mapped[list["MissionRequirements"]] = relationship(
+    requirements: Mapped[list["MissionRequirement"]] = relationship(
         back_populates="mission",
         cascade="all, delete-orphan",
         order_by="MissionRequirement.position",
