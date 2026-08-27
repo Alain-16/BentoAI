@@ -82,6 +82,8 @@ class ShoppingMission(UUIDMixin, TimestampMixin,Base):
         back_populates="mission", cascade="all,delete-orphan"
     )
 
+    discovery_results: Mapped[dict] = mapped_column(JSONB, default=dict, nullable=False)
+
     __table_args__ = (
         Index("ix_shopping_missions_user_id_status", "user_id", "status"),
     )

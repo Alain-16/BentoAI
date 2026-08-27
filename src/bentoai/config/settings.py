@@ -115,6 +115,22 @@ class LLMSettings(BaseSettings):
     max_tokens: int = 4096
     timeout_seconds: int = 60
 
+class CommerceSettings(BaseSettings):
+
+    model_config = _BASE_CONFIG | SettingsConfigDict(env_prefix="COMMERCE_")
+
+    shopify_catalog_endpoint: str = "https://catalog.shopify.com/api/ucp/mcp"
+
+    shopify_agent_profile_url: str =(
+        "https://shopify.dev/ucp/agent-profiles/2026-04-08/valid-with-capabilities.json"
+    )
+
+    search_limit: int = 20
+
+    max_candidates_per_requirements: int = 30
+
+    request_timeout_seconds: int = 30
+
 
 class Settings(BaseSettings):
     """Root configuration object composing every group."""
@@ -127,6 +143,7 @@ class Settings(BaseSettings):
     otp: OTPSettings = Field(default_factory=OTPSettings)
     email: EmailSettings = Field(default_factory=EmailSettings)
     llm: LLMSettings = Field(default_factory=LLMSettings)
+    commerce: CommerceSettings = Field(default_factory=CommerceSettings)
 
     @model_validator(mode="after")
     def _guard_production_config(self) -> "Settings":

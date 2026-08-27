@@ -35,17 +35,14 @@ async def create_mission(payload: MissionCreate, session:DbSession, user:Current
 async def plan_mission(mission_id:uuid.UUID,orchestrator: OrchestratorDep, user: CurrentUser) -> MissionWithPlan:
 
     try:
-        mission, questions = await orchestrator.advance(mission_id, user.id, expected_from=MissionStatus.DRAFT)
+        mission, _ = await orchestrator.advance(mission_id, user.id, expected_from=MissionStatus.DRAFT)
     except MissionNotFound:
         raise HTTPException(status.HTTP_404_NOT_FOUND, "MISSION NOT FOUND")
     except (UnexpectedState, NoStepForState, InvalidTransition) as exc:
 
         raise HTTPException(status.HTTP_409_CONFLICT, str(exc))
 
-    response = MissionWithPlan.model_validate(mission)
-    response.missing_information = questions
-
-    return response
+    return MissionWithPlan.model_validate(mission)
 
 @router.get("/{mission_id}", response_model=MissionWithPlan)
 async def get_mission(

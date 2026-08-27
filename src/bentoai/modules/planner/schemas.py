@@ -9,7 +9,7 @@ import uuid
 from datetime import datetime
 from decimal import Decimal
 
-from pydantic import BaseModel, ConfigDict, Field
+from pydantic import BaseModel, ConfigDict, Field, computed_field
 
 from bentoai.modules.planner.models import (
     MissionStatus,
@@ -53,6 +53,8 @@ class MissionRead(BaseModel):
     preferences: dict
     created_at: datetime
     updated_at: datetime
+    
+
 
 
 class MissionWithPlan(MissionRead):
@@ -61,4 +63,10 @@ class MissionWithPlan(MissionRead):
     requirements: list[RequirementRead] = Field(default_factory=list)
     # Surfaced so the workspace can put the question to the customer, rather than
     # silently planning around a gap.
-    missing_information: list[str] = Field(default_factory=list)
+    planning_metadata: dict = Field(default_factory=dict, exclude=True)
+
+    @computed_field
+    @property
+    def missing_information(self) -> list[str]:
+
+        return self.planning_metadata.get("missing_information",[])
