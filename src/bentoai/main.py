@@ -5,6 +5,7 @@ from fastapi.middleware.cors import CORSMiddleware
 from bentoai.api.deps import SettingsDeps
 from bentoai.config import get_settings
 from bentoai.shared.database import get_engine
+from bentoai.api.routes import missions
 
 logger = logging.getLogger(__name__)
 
@@ -43,6 +44,8 @@ def create_app() -> FastAPI:
         allow_methods=["*"],
         allow_headers=["*"],
     )
+
+    app.include_router(missions.router, prefix=settings.app.api_prefix)
 
     @app.get("/health")
     async def health(settings: SettingsDeps) -> dict[str, str]:
