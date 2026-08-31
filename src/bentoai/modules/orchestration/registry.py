@@ -4,6 +4,7 @@ from bentoai.modules.orchestration.orchestrator import ShoppingOrchestrator
 from bentoai.modules.planner.models import MissionStatus
 from bentoai.modules.planner.step import PlanningStep
 from bentoai.modules.discovery.step import DiscoveryStep
+from bentoai.modules.evaluation.step import EvaluationStep
 from functools import lru_cache
 from bentoai.modules.commerce.gateway import CommerceGateway
 from bentoai.modules.commerce.providers.shopify_global import ShopifyGlobalCatalogProvider
@@ -38,6 +39,8 @@ def build_orchestrator(session:AsyncSession) -> ShoppingOrchestrator:
     orchestrator.register(MissionStatus.DRAFT, PlanningStep(session))
 
     orchestrator.register(MissionStatus.SEARCHING, DiscoveryStep(gateway, settings))
+
+    orchestrator.register(MissionStatus.EVALUATING, EvaluationStep(gateway, settings))
 
 
     return orchestrator

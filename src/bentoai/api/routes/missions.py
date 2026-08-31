@@ -21,6 +21,9 @@ from bentoai.modules.planner.schemas import (
 )
 from bentoai.modules.planner.service import MissionService
 from bentoai.modules.planner.state_machine import InvalidTransition
+from bentoai.modules.evaluation.schemas import MissionRecommendationsRead, to_schema
+from bentoai.modules.evaluation.service import NothingToEvaluate, build_recommendations
+from bentoai.modules.orchestration.registry import get_gateway
 
 router = APIRouter(prefix="/missions", tags=["missions"])
 
@@ -82,3 +85,43 @@ async def discover_products(mission_id: uuid.UUID, orchestrator:OrchestratorDep,
 
     return MissionWithPlan.model_validate(mission)
 
+
+
+@router("/{mission_id}/recommendations", response_model=MissionRecommendationsRead)
+async def get_recommendations(
+
+    mission_id:uuid.UUID,
+    session: DbSession,
+    orchestrator: OrchestratorDep,
+    user:CurrentUser,
+
+) -> MissionRecommendationsRead:
+
+
+    notes: list[str] = []
+
+    try:
+        mission = await MissionService(session).get_mission(mission_id, user.id)
+    except MissionNotFound:
+        raise HTTPException(status.HTTP_404_NOT_FOUND, "mission not found")
+
+    if mission.status is MissionStatus.EVALUATING:
+        try:
+            mission, notes = await orchestrator.advance(mission_id, user.id, expected_from=MissionStatus.EVALUATING)
+        except NothingToEvaluate:
+            raise HTTPException(status.HTTP_409_CONFLICT, "Discovery has not run for this mission yet")
+
+        except (UnexpectedState, NoStepForState, InvalidTransition) as exc:
+            raise HTTPException(status.HTTP_409_CONFLICT, str(exc))
+
+    elif not mission.evaluation_results:
+        raise HTTPException(status.HTTP_409_CONFLICT,f"This mission is in {mission.status.value}. Run /discover first." )
+
+    recommendations = await build_recommendations(mission, get_gateway())
+
+    return MissionRecommendationsRead(
+        mission_id=mission.id,
+        status=mission.status.value,
+        requirements=to_schema(recommendations),
+        notes=notes
+    )
