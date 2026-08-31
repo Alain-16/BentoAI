@@ -84,6 +84,10 @@ class ShoppingOrchestrator:
 
     def _move(self,mission:ShoppingMission,target:MissionStatus) -> None:
 
+        if target is mission.status:
+            logger.info("mission_holding mission_id=%s at=%s", mission.id, target.value)
+            return
+
         assert_can_transition(mission.status, target)
         mission.status = target
 

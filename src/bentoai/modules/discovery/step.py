@@ -28,13 +28,29 @@ class DiscoveryStep:
             for failure in outcome.failures
         ]
 
+        if outcome.unmet_optional:
+            notes.append(
+                "Nothing found for these optional items:" + ", ".join(outcome.unmet_optional)
+            )
+
+        if outcome.unmet_required:
+            notes.append(
+                "No products found for these required items: " + ", ".join(outcome.unmet_required)
+                + ". Try /discover again or reword the requirement."
+            )
+            next_status = MissionStatus.SEARCHING
+        else:
+            next_status = MissionStatus.EVALUATING
+
         return StepOutcome(
-            next_status=MissionStatus.EVALUATING,
+            next_status=next_status,
             event_type="DISCOVERY_COMPLETE",
             event_payload={
                 "requirement_count": outcome.requirement_count,
                 "candidate_count": outcome.candidate_count,
                 "provider_failures": len(outcome.failures),
+                "unmet_required": outcome.unmet_required,
+                "unmet_optional": outcome.unmet_optional,
             },
             notes=notes,
         )

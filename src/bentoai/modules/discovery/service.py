@@ -1,4 +1,3 @@
-import asyncio
 import logging
 from dataclasses import dataclass, field
 from datetime import datetime, timezone
@@ -7,7 +6,7 @@ from bentoai.config import Settings
 from bentoai.modules.commerce.dtos import CandidateProduct, ProductSearchQuery
 from bentoai.modules.commerce.gateway import CommerceGateway, ProviderFailure
 from bentoai.modules.discovery import agent
-from bentoai.modules.planner.models import MissionRequirement, ShoppingMission
+from bentoai.modules.planner.models import MissionRequirement, ShoppingMission, RequirementPriority
 
 logger = logging.getLogger(__name__)
 
@@ -23,6 +22,8 @@ class DiscoveryOutcome:
       requirement_count: int =0
       candidate_count: int =0
       failures: list[ProviderFailure] = field(default_factory=list)
+      unmet_required: list[str] = field(default_factory=list)
+      unmet_optional: list[str] = field(default_factory=list)
 
 
 class DiscoveryService:
@@ -80,6 +81,21 @@ class DiscoveryService:
                     for c in candidates
                 ],
             }
+            if not candidates:
+                    if requirement.priority is RequirementPriority.REQUIRED:
+                        outcome.unmet_required.append(requirement.category)
+                    else:
+                        outcome.unmet_optional.append(requirement.category)
+
+        
+        searched = set(stored)
+        for requirement in requirements:
+            if str(requirement.id) in searched:
+                continue
+            if requirement.priority is RequirementPriority.REQUIRED:
+                outcome.unmet_required.append(requirement.category)
+            else:
+                outcome.unmet_optional.append(requirement.category)
 
         mission.discovery_results = {
             "searched_at": datetime.now(timezone.utc).isoformat(),
@@ -102,13 +118,18 @@ class DiscoveryService:
                    ships_to_country=ships_to_country,
                    currency=currency,
                    available_only=True,
-                   limit=self.settings.commerce.search_limits,
+                   limit=self.settings.commerce.search_limit,
 
               )
               for query in queries
          ]
 
-         outcomes = await asyncio.gather(*(self.gateway.search(q) for q in search_queries))
+         # One at a time, deliberately. Running a requirement's phrases together
+         # is what got us rate limited: eight sequential requests to the catalog
+         # never tripped the limit, three simultaneous ones did. Discovery is
+         # slow either way, so the few extra seconds buy results rather than
+         # empty categories.
+         outcomes = [await self.gateway.search(q) for q in search_queries]
 
          merged: dict[str, CandidateProduct] = {}
          failures: list[ProviderFailure] = []

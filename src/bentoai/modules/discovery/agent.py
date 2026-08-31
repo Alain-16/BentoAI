@@ -35,7 +35,7 @@ are. Leave it out if they did not say.\
 """
 
 
-async def plan_search(mission:ShoppingMission, requirements: list[MissionRequirement]) -> DiscoveryPlan:
+async def plan_searches(mission:ShoppingMission, requirements: list[MissionRequirement]) -> DiscoveryPlan:
 
     lines = [f"Mission: {mission.goal}"]
 

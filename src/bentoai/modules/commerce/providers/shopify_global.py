@@ -2,6 +2,7 @@
 shopify's Global Catalog — every merchant on the platform, one endpoint.
 """
 
+import asyncio
 import logging
 import uuid
 
@@ -26,6 +27,13 @@ _HEADERS = {
 }
 
 _LOOKUP_BATCH_SIZE = 50
+
+# Waiting a moment and asking again is the whole strategy. The catalog sends no
+# Retry-After or rate-limit headers, so there is nothing to read — these numbers
+# come from watching how it behaves. Eight sequential requests never tripped the
+# limit; three at once did.
+_MAX_ATTEMPTS = 3
+_BACKOFF_SECONDS = (1.0, 3.0)
 
 
 class ShopifyGlobalCatalogProvider(CommerceProvider):
@@ -92,6 +100,30 @@ class ShopifyGlobalCatalogProvider(CommerceProvider):
         return found
 
     async def _call(self, tool: str, arguments: dict) -> dict:
+        """Make an MCP call, waiting and trying again if told to slow down.
+
+        A search changes nothing, so repeating it is safe — that is the test
+        §10.2 sets for whether an operation may be retried. A rejected or
+        malformed request is never retried, because the answer would be the same
+        and the attempt would spend a rate-limited call for nothing.
+        """
+        for attempt in range(_MAX_ATTEMPTS):
+            try:
+                return await self._dispatch(tool, arguments)
+            except ProviderRateLimited:
+                if attempt == _MAX_ATTEMPTS - 1:
+                    raise
+                delay = _BACKOFF_SECONDS[attempt]
+                logger.info(
+                    "Rate limited by %s, waiting %.1fs before retrying",
+                    self.name,
+                    delay,
+                )
+                await asyncio.sleep(delay)
+
+        raise AssertionError("unreachable")  # pragma: no cover
+
+    async def _dispatch(self, tool: str, arguments: dict) -> dict:
         """Make one MCP call and hand back the useful part of the answer."""
         body = {
             "jsonrpc": "2.0",
