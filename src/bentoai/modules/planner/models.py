@@ -85,6 +85,7 @@ class ShoppingMission(UUIDMixin, TimestampMixin,Base):
     discovery_results: Mapped[dict] = mapped_column(JSONB, default=dict, nullable=False)
 
     evaluation_results: Mapped[dict] = mapped_column(JSONB, default=dict, nullable=False)
+    basket_options: Mapped[dict] = mapped_column(JSONB, default=dict, nullable=False)
 
     __table_args__ = (
         Index("ix_shopping_missions_user_id_status", "user_id", "status"),
