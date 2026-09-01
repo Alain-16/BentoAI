@@ -38,9 +38,19 @@ nobody stated a size, say your confidence is low. Do not quietly turn an \
 assumption into a verdict - a wrong confident answer costs the customer more \
 than an honest uncertain one.
 
+Prices are shown so you understand what kind of product each one is, not so \
+you can judge value. Whether something is good value for money is worked out \
+separately, afterwards, in ordinary arithmetic. So do not lower \
+requirement_fit or preference_fit because a product is expensive, and do not \
+raise them because it is cheap. Judge only whether it does the job and suits \
+this customer. Marking an expensive product down here would penalise it twice \
+for the same thing.
+
 In trade_offs, name what the customer gives up by choosing this one. Be \
 concrete and short: "heavier than the others", "no warranty stated", "takes \
-up more floor space". Leave it empty if there is genuinely nothing to note.
+up more floor space". Price is worth mentioning here when it genuinely is a \
+trade-off, because trade_offs are read by a person rather than scored. Leave \
+it empty if there is genuinely nothing to note.
 
 In reason, write one sentence a shopper would understand, about this product. \
 It is shown on the product card, so write it for them and not for us.
@@ -61,7 +71,7 @@ async def evaluate_requirement(mission:ShoppingMission, requirement: MissionRequ
     prompt = _build_prompt(mission, requirement, candidates)
 
     try:
-        result = generate_structured(
+        result = await generate_structured(
             system=SYSTEM_PROMPT,
             user_message=prompt,
             output_model=RequirementEvaluation,

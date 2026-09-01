@@ -2,14 +2,14 @@ from enum import Enum
 from pydantic import BaseModel, Field
 
 
-class FitLevel(BaseModel):
+class FitLevel(str, Enum):
 
     HIGH = "high"
     MEDIUM = "medium"
     LOW = "low"
 
 
-class Confidence(BaseModel):
+class Confidence(str, Enum):
     HIGH = "high"
     MEDIUM = "medium"
     LOW = "low"
@@ -36,4 +36,3 @@ class CandidateAssessment(BaseModel):
 class RequirementEvaluation(BaseModel):
     assessments: list[CandidateAssessment] = Field(default_factory=list)
 
-    

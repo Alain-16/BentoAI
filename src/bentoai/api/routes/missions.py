@@ -87,7 +87,7 @@ async def discover_products(mission_id: uuid.UUID, orchestrator:OrchestratorDep,
 
 
 
-@router("/{mission_id}/recommendations", response_model=MissionRecommendationsRead)
+@router.get("/{mission_id}/recommendations", response_model=MissionRecommendationsRead)
 async def get_recommendations(
 
     mission_id:uuid.UUID,

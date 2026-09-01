@@ -10,10 +10,22 @@ from bentoai.modules.evaluation.filtering import cheapest_purchasable
 logger = logging.getLogger(__name__)
 
 
-WEIGHT_REQUIREMENT=0.25
-WEIGHT_QUALITY=0.25
-WEIGHT_PRICE=0.25
-WEIGHT_PREFERENCE=0.25
+# How much of the final score each part is allowed to control. They add up to
+# 1.0, so a score is always between 0 and 1 and two products are comparable.
+#
+# Requirement match leads on purpose. With all four equal, a product that only
+# half does the job can buy its way back by being cheapest and popular - which
+# is exactly what happened on a real run, where a 53 CAD laptop stand outranked
+# a 139 CAD monitor for "monitor or laptop display setup" even though the model
+# had said it was not a display.
+#
+# Price sits third because the hard filter has already removed everything the
+# customer cannot afford, so this is only choosing between things they can
+# already have.
+WEIGHT_REQUIREMENT = 0.35
+WEIGHT_QUALITY = 0.25
+WEIGHT_PRICE = 0.20
+WEIGHT_PREFERENCE = 0.20
 
 FIT_VALUES = {FitLevel.HIGH: 1.0, FitLevel.MEDIUM: 0.6, FitLevel.LOW: 0.2}
 
