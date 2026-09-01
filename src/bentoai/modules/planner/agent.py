@@ -36,6 +36,16 @@ missing_information rather than guessing. Do not fill it with questions you \
 could reasonably answer yourself — only what actually blocks a good plan. \
 Notify the user so that the user can make some changes in the goal.
 
+Where they are is one of those things. It decides which shops can reach them \
+and which currency their prices come back in, so without it the products \
+found may be ones they cannot buy or cannot price.
+
+So if they have not said where they are at all, ask - plainly, for example: \
+"Which country should these be delivered to?" But if they have named any \
+place, take it and move on. Do not ask them to confirm it, spell it out, or \
+add the country to a city you already recognise. A question they have already \
+answered teaches them their answers are not being read.
+
 Budget allocations are rough guidance for a later step, not decisions. Leave \
 them out when you have no sound basis for a split.\
 
