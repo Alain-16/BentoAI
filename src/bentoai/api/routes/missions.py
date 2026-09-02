@@ -12,6 +12,7 @@ from fastapi import APIRouter, HTTPException, status
 from bentoai.modules.deterministicService.basket.schemas import MissionBasketRead
 from bentoai.modules.deterministicService.basket.schemas import to_schema as basket_to_schema
 from bentoai.modules.deterministicService.basket.service import NothingToOptimize, build_basket_view
+from bentoai.modules.deterministicService.audit.service import describe, recent_for_mission
 from bentoai.api.deps import CurrentUser, DbSession, OrchestratorDep
 from bentoai.modules.orchestration.orchestrator import NoStepForState, UnexpectedState
 from bentoai.modules.planner.models import MissionStatus
@@ -21,12 +22,17 @@ from bentoai.modules.planner.schemas import (
     MissionRead,
     MissionWithPlan,
     RequirementRead,
+    ActivityEventRead,
+    AnswerSubmission,
+    MissionRunRead
 )
 from bentoai.modules.planner.service import MissionService
 from bentoai.modules.planner.state_machine import InvalidTransition
 from bentoai.modules.evaluation.schemas import MissionRecommendationsRead, to_schema
 from bentoai.modules.evaluation.service import NothingToEvaluate, build_recommendations
 from bentoai.modules.orchestration.registry import get_gateway
+from bentoai.modules.orchestration import runner
+from bentoai.modules.deterministicService.audit.models import ActorType,AuditEvent
 
 router = APIRouter(prefix="/missions", tags=["missions"])
 
@@ -35,6 +41,111 @@ async def create_mission(payload: MissionCreate, session:DbSession, user:Current
 
     mission = await MissionService(session).create_mission(user.id, payload)
     return MissionRead.model_validate(mission)
+
+@router.post("/{mission_id}/run", response_model=MissionRunRead, status_code=status.HTTP_202_ACCEPTED)
+async def run_mission(mission_id:uuid.UUID, session:DbSession, user:CurrentUser) -> MissionRunRead:
+
+    try:
+        mission = await MissionService(session).get_mission(mission_id, user.id)
+    except:
+        raise HTTPException(status.HTTP_404_NOT_FOUND, "mission not found")
+
+    started = runner.start_run(mission.id,user.id)
+
+    return MissionRunRead(
+        mission_id=mission.id,
+        status=mission.status,
+        started=started,
+        pending_questions=mission.pending_questions or [],
+    )
+
+@router.get("/{mission_id}/activity", response_model=list[ActivityEventRead])
+async def get_activity(
+    mission_id: uuid.UUID, session: DbSession, user: CurrentUser
+) -> list[ActivityEventRead]:
+    
+    try:
+        await MissionService(session).get_mission(mission_id, user.id)
+    except MissionNotFound:
+        raise HTTPException(status.HTTP_404_NOT_FOUND, "Mission not found")
+
+    events = await recent_for_mission(session, mission_id)
+
+    activity: list[ActivityEventRead] = []
+    for event in events:
+        title, detail = describe(event)
+        activity.append(
+            ActivityEventRead(
+                id=event.id,
+                at=event.created_at,
+                event_type=event.event_type,
+                title=title,
+                detail=detail,
+                notes=(event.event_payload or {}).get("notes") or [],
+            )
+        )
+
+    return activity   
+
+@router.post("/{mission_id}/answers", response_model=MissionWithPlan)
+async def answer_questions(
+    mission_id: uuid.UUID,
+    payload: AnswerSubmission,
+    session: DbSession,
+    user: CurrentUser,
+) -> MissionWithPlan:
+
+    try:
+        mission = await MissionService(session).get_mission(mission_id, user.id)
+    except MissionNotFound:
+        raise HTTPException(status.HTTP_404_NOT_FOUND, "Mission not found")
+
+    if not mission.pending_questions:
+        raise HTTPException(
+            status.HTTP_409_CONFLICT, "This mission is not waiting on anything."
+        )
+
+    answered: list[str] = []
+
+    if payload.location:
+        mission.location = payload.location
+        answered.append("location")
+
+    if payload.budget_amount is not None:
+        mission.budget_amount = payload.budget_amount
+        answered.append("budget_amount")
+
+    if payload.budget_currency:
+        mission.budget_currency = payload.budget_currency.upper()
+
+    if not answered:
+        raise HTTPException(
+            status.HTTP_400_BAD_REQUEST, "None of the pending questions were answered."
+        )
+
+    mission.pending_questions = [
+        question
+        for question in mission.pending_questions
+        if question.get("field") not in answered
+    ]
+
+    session.add(
+        AuditEvent(
+            mission_id=mission.id,
+            user_id=user.id,
+            actor_type=ActorType.USER,
+            event_type="QUESTIONS_ANSWERED",
+            event_payload={"answered": answered},
+        )
+    )
+
+    await session.commit()
+    await session.refresh(mission)
+
+    if not mission.pending_questions:
+        runner.start_run(mission.id, user.id)
+
+    return MissionWithPlan.model_validate(mission)
 
 
 @router.post("/{mission_id}/plan", response_model=MissionWithPlan)

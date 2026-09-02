@@ -18,6 +18,29 @@ from bentoai.modules.planner.models import (
 )
 
 
+class ActivityEventRead(BaseModel):
+    """One line in the activity log."""
+
+    id: uuid.UUID
+    at: datetime
+
+
+    event_type: str
+
+    title: str
+    detail: str = ""
+
+    
+    notes: list[str] = Field(default_factory=list)
+
+
+class AnswerSubmission(BaseModel):
+
+    location: str | None = Field(default=None, max_length=255)
+    budget_amount: Decimal | None = Field(default=None, gt=0)
+    budget_currency: str | None = Field(default=None, min_length=3, max_length=3)
+
+
 class MissionCreate(BaseModel):
     """What a customer sends to start a mission."""
 
@@ -55,6 +78,15 @@ class MissionRead(BaseModel):
     updated_at: datetime
     
 
+class MissionRunRead(BaseModel):
+    """The answer to "please run this mission"."""
+
+    mission_id: uuid.UUID
+    status: MissionStatus
+
+    started: bool
+
+    pending_questions: list[dict] = Field(default_factory=list)
 
 
 class MissionWithPlan(MissionRead):
@@ -64,6 +96,8 @@ class MissionWithPlan(MissionRead):
     # Surfaced so the workspace can put the question to the customer, rather than
     # silently planning around a gap.
     planning_metadata: dict = Field(default_factory=dict, exclude=True)
+
+    pending_questions: list[dict] = Field(default_factory=list)
 
     @computed_field
     @property

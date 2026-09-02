@@ -37,23 +37,22 @@ class PlanningStep:
 
         self._apply(mission, result)
 
+        questions = _blocking_questions(mission)
+
         return StepOutcome(
             next_status=MissionStatus.SEARCHING,
             event_type="PLAN_GENERATED",
             event_payload={
                 "requirement_count": len(result.requirements),
                 "rationale": result.rationale,
+                "questions": [q["id"] for q in questions],
             },
             notes=result.missing_information,
+            questions=questions,
         )
 
     def _apply(self, mission: ShoppingMission, result: PlanningResult) -> None:
         """Write the agent's answer onto the mission.
-
-        Nothing the model returned is trusted with money. Budget allocations are
-        checked against the real budget here, in ordinary code, because an LLM is
-        never the authority on financial figures (Principle 5) — including ones
-        it only suggested.
         """
         mission.goal = result.goal
 
@@ -108,8 +107,6 @@ class PlanningStep:
                     category=planned.category,
                     description=planned.description,
                     priority=RequirementPriority(planned.priority.value),
-                    # The order the agent returned them in, kept so the plan reads
-                    # the same way every time it is loaded.
                     position=position,
                     budget_allocation=allocation,
                     attributes={},
@@ -118,3 +115,33 @@ class PlanningStep:
 
         mission.requirements.clear()
         mission.requirements.extend(requirements)
+
+def _blocking_questions(mission: ShoppingMission) -> list[dict]:
+    """What we genuinely cannot proceed without.
+    """
+    questions: list[dict] = []
+
+    if not mission.location:
+        questions.append(
+            {
+                "id": "location",
+                "field": "location",
+                "question": "Where should these be delivered?",
+                "why": (
+                    "It decides which shops can reach you and which currency "
+                    "prices come back in."
+                ),
+            }
+        )
+
+    if mission.budget_amount is None:
+        questions.append(
+            {
+                "id": "budget",
+                "field": "budget_amount",
+                "question": "What would you like to spend in total?",
+                "why": "Without it nothing can be ruled out as too expensive.",
+            }
+        )
+
+    return questions
