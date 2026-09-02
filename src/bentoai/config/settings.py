@@ -125,6 +125,15 @@ class CommerceSettings(BaseSettings):
         "https://shopify.dev/ucp/agent-profiles/2026-04-08/valid-with-capabilities.json"
     )
 
+    # Where we tell the catalog to ship, when the customer has not said.
+    #
+    # This is not a guess about where they live - it is which market this
+    # deployment serves. It matters more than it looks: the catalog prices by
+    # shipping destination, and asking for CAD without naming a country gets
+    # you every merchant's local currency instead. A mission with no location
+    # once had all 80 of its candidates rejected on currency alone.
+    default_ship_to_country: str = "CA"
+
     search_limit: int = 20
 
     max_candidates_per_requirement: int = 30

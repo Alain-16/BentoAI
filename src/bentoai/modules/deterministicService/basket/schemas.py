@@ -5,6 +5,11 @@ from pydantic import BaseModel
 
 from bentoai.modules.planner.models import RequirementPriority
 
+class RatingRead(BaseModel):
+
+    value: float
+    count: int
+
 
 class BasketOptionRead(BaseModel):
     """One product the customer may choose for one requirement."""
@@ -19,7 +24,7 @@ class BasketOptionRead(BaseModel):
     merchant_domain: str
     product_url: str | None = None
     image_url: str | None = None
-
+    ratings: RatingRead | None = None
     score: float
 
     
@@ -33,6 +38,8 @@ class BasketOptionRead(BaseModel):
 
     preferred: bool = False
     chosen: bool = False
+
+
 
 
 class BasketRequirementRead(BaseModel):
@@ -84,6 +91,7 @@ def to_schema(mission, view: dict) -> MissionBasketRead:
                     merchant_domain=offer.merchant_domain,
                     product_url=offer.product_url,
                     image_url=offer.image_url,
+                    ratings=(RatingRead(value=candidate.rating_value, count=candidate.rating_count or 0) if candidate.rating_value is not None else None),
                     score=stored.get("score", 0.0),
                     included_as=stored.get("included_as", ""),
                     note=stored.get("note", ""),

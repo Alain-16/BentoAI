@@ -10,6 +10,7 @@ from bentoai.modules.commerce.gateway import CommerceGateway
 from bentoai.modules.commerce.providers.shopify_global import ShopifyGlobalCatalogProvider
 from bentoai.config.settings import get_settings
 from bentoai.shared.http import get_http_client
+from bentoai.modules.deterministicService.basket.step import BasketOptimizerStep
 
 @lru_cache
 def get_gateway() -> CommerceGateway:
@@ -41,6 +42,8 @@ def build_orchestrator(session:AsyncSession) -> ShoppingOrchestrator:
     orchestrator.register(MissionStatus.SEARCHING, DiscoveryStep(gateway, settings))
 
     orchestrator.register(MissionStatus.EVALUATING, EvaluationStep(gateway, settings))
+
+    orchestrator.register(MissionStatus.REVIEW, BasketOptimizerStep(gateway, settings))
 
 
     return orchestrator

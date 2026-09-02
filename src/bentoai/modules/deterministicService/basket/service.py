@@ -22,7 +22,24 @@ logger = logging.getLogger(__name__)
 
 
 class NothingToOptimize(Exception):
-    """  Evaluation has not run, there is nothing to optimize"""
+    """There is nothing to build a basket from.
+
+    Two different situations reach here and they need different answers, so the
+    reason travels on the exception rather than being guessed at by the caller.
+
+    NOT_EVALUATED  evaluation has not run yet - running it is the fix.
+    NO_PRODUCTS    it ran and nothing survived. Running it again changes
+                   nothing, because the filter is deterministic over the same
+                   candidates. The customer has to change something.
+    """
+
+    NOT_EVALUATED = "not_evaluated"
+    NO_PRODUCTS = "no_products"
+
+    def __init__(self, mission_id: str, reason: str) -> None:
+        super().__init__(f"{mission_id}: {reason}")
+        self.mission_id = mission_id
+        self.reason = reason
 
 
 @dataclass
@@ -40,14 +57,15 @@ class BasketOptimizerService:
 
     async def run(self,mission:ShoppingMission)-> OptimizerOutcome:
         if not(mission.evaluation_results or {}).get("requirements"):
-            raise NothingToOptimize(str(mission.id))
+            raise NothingToOptimize(str(mission.id), NothingToOptimize.NOT_EVALUATED)
 
         recommendations= await build_recommendations(mission, self.gateway)
 
         pool = build_option_pool(recommendations)
 
         if not pool:
-            raise NothingToOptimize(str(mission.id))
+            # Evaluation ran fine; everything it looked at was rejected.
+            raise NothingToOptimize(str(mission.id), NothingToOptimize.NO_PRODUCTS)
 
         comparison = await agent.compare(mission, pool)
         preferred = agent.preferred_products(comparison, pool)

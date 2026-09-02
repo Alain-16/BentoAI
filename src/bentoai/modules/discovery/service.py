@@ -47,6 +47,20 @@ class DiscoveryService:
         # The agent answered with positions; turn them back into requirements.
         by_index = {index: req for index, req in enumerate(requirements, start=1)}
 
+        # The agent only names a country when the customer did. Falling back to
+        # the deployment's own market keeps address_country on every request,
+        # which is what makes prices come back in one comparable currency.
+        # Storing it here means evaluation and the basket inherit it for free.
+        ships_to_country = (
+            plan.ships_to_country or self.settings.commerce.default_ship_to_country
+        )
+        if not plan.ships_to_country:
+            logger.info(
+                "No location on mission %s - shipping to %s by default",
+                mission.id,
+                ships_to_country,
+            )
+
         outcome = DiscoveryOutcome(requirement_count=len(requirements))
         stored: dict[str, dict] = {}
 
@@ -65,7 +79,7 @@ class DiscoveryService:
                 continue
 
             candidates, failures = await self._search(
-                queries, plan.ships_to_country, mission.budget_currency
+                queries, ships_to_country, mission.budget_currency
             )
             outcome.failures.extend(failures)
             outcome.candidate_count += len(candidates)
@@ -99,7 +113,7 @@ class DiscoveryService:
 
         mission.discovery_results = {
             "searched_at": datetime.now(timezone.utc).isoformat(),
-            "ships_to_country": plan.ships_to_country,
+            "ships_to_country": ships_to_country,
             "requirements": stored,
             "failures": [
                 {"provider": f.provider, "reason": f.reason} for f in outcome.failures

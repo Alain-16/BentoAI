@@ -22,7 +22,7 @@ MAX_COMBINATIONS = 250_000
 @dataclass
 class Option:
 
-    product: str
+    product_id: str
     provider: str
     title: str
     price: Decimal
@@ -57,7 +57,7 @@ class BasketSolution:
     choices: list[Choice] = field(default_factory=list)
 
     total: Decimal = Decimal("0.00")
-    remaining: Decimal | None
+    remaining: Decimal | None = None
 
     feasible: bool = True
     shortfall: Decimal | None = None
@@ -85,14 +85,20 @@ def build_option_pool(recommendations: list[dict]) -> list[RequirementOptions]:
         chosen = options[:BEST_SLOTS]
 
         cheapest = min(options, key=lambda o: o.price)
+
+        # The guard covers only the extra option. If the cheapest product is
+        # already one of the two best-scoring, the pool is simply shorter -
+        # there is no reason to pad it with a third product nobody needs.
         if all(o.product_id != cheapest.product_id for o in chosen):
             chosen.append(
                 Option(**{**cheapest.__dict__, "included_as": "cheapest that passed"})
             )
-            pool.append(
-                RequirementOptions(requirement=group["requirement"], options=chosen)
 
-            )
+        # Every requirement that had anything to offer belongs in the pool,
+        # whether or not it gained that third option.
+        pool.append(
+            RequirementOptions(requirement=group["requirement"], options=chosen)
+        )
 
     logger.info(
         "option_pool requirements=%d options=%d",
