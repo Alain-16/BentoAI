@@ -32,7 +32,27 @@ class Option:
     reason:str
     trade_offs: tuple[str, ...] = ()
 
+    # How many of this the customer wants. Constant across a requirement's
+    # options - it belongs to the need, not to the product.
+    quantity: int = 1
+
+    # The scoring engine's four dimensions for this product. Carried through so
+    # a comparison can show WHY one won without anybody re-deriving it - and so
+    # the overall score, which the brief bans showing, stays out of the UI while
+    # its parts stay available.
+    breakdown: dict = field(default_factory=dict)
+
     included_as: str = "best score"
+
+    @property
+    def line_total(self) -> Decimal:
+        """What this option costs in the basket - price times how many.
+
+        Every total in this file uses this rather than price. price is the unit
+        figure a customer reads on the card; line_total is the one the budget
+        has to survive.
+        """
+        return self.price * self.quantity
 
 
 @dataclass
@@ -80,7 +100,8 @@ def build_option_pool(recommendations: list[dict]) -> list[RequirementOptions]:
         if not items:
             continue
 
-        options = [_to_option(item) for item in items]
+        requirement = group["requirement"]
+        options = [_to_option(item, requirement.quantity) for item in items]
 
         chosen = options[:BEST_SLOTS]
 
@@ -96,9 +117,7 @@ def build_option_pool(recommendations: list[dict]) -> list[RequirementOptions]:
 
         # Every requirement that had anything to offer belongs in the pool,
         # whether or not it gained that third option.
-        pool.append(
-            RequirementOptions(requirement=group["requirement"], options=chosen)
-        )
+        pool.append(RequirementOptions(requirement=requirement, options=chosen))
 
     logger.info(
         "option_pool requirements=%d options=%d",
@@ -110,7 +129,7 @@ def build_option_pool(recommendations: list[dict]) -> list[RequirementOptions]:
 
 
 
-def _to_option(item:dict) -> Option:
+def _to_option(item: dict, quantity: int = 1) -> Option:
 
     candidate = item["candidate"]
     ranked = item["ranked"]
@@ -129,6 +148,8 @@ def _to_option(item:dict) -> Option:
         score=float(ranked.get("score") or 0.0),
         reason=ranked.get("reason") or "",
         trade_offs=tuple(ranked.get("trade_offs") or ()),
+        quantity=max(1, quantity or 1),
+        breakdown=dict(ranked.get("breakdown") or {}),
     )
 
 
@@ -151,7 +172,7 @@ def solve(
     best_combo: tuple[Option | None, ...] | None = None
 
     for combo in itertools.product(*groups):
-        total = sum((o.price for o in combo if o is not None), Decimal("0.00"))
+        total = sum((o.line_total for o in combo if o is not None), Decimal("0.00"))
 
         if budget is not None and total > budget:
             continue
@@ -260,7 +281,7 @@ def _cheapest_possible(
             continue
         cheapest = min(requirement_options.options, key=lambda o: o.price)
         choices.append(Choice(requirement_options.requirement, cheapest))
-        total += cheapest.price
+        total += cheapest.line_total
 
     shortfall = (total - budget) if budget is not None else None
 
@@ -307,7 +328,7 @@ def _explain(
                 f"within budget."
             )
         elif choice.option.product_id != wanted.product_id:
-            saved = wanted.price - choice.option.price
+            saved = wanted.line_total - choice.option.line_total
             notes.append(
                 f"For {requirement_options.requirement.category}, "
                 f"{choice.option.title} was chosen over {wanted.title}, "

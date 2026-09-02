@@ -108,6 +108,11 @@ class PlanningStep:
                     description=planned.description,
                     priority=RequirementPriority(planned.priority.value),
                     position=position,
+                    # Clamped again here even though the contract already
+                    # bounds it. The contract stops a malformed answer; this
+                    # stops a valid one we would rather not act on, and it costs
+                    # one line.
+                    quantity=max(1, min(50, planned.quantity or 1)),
                     budget_allocation=allocation,
                     attributes={},
                 )

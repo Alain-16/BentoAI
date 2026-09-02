@@ -46,6 +46,20 @@ place, take it and move on. Do not ask them to confirm it, spell it out, or \
 add the country to a city you already recognise. A question they have already \
 answered teaches them their answers are not being read.
 
+Say how many of each thing they want. "Three pairs of shorts" is quantity 3, \
+"a pair of dumbbells" sold as a pair is quantity 1. When they have not said, \
+it is 1 - do not guess that somebody wants several of something because it \
+sounds like they might. Getting this wrong costs them money in a way nothing \
+downstream can catch, because everything after you takes the number as given.
+
+Only ever count things that are bought one at a time - a shirt, a headlamp, a \
+monitor, a sleeping bag. Anything you have named as a set, kit, system, supply, \
+bundle or collection is quantity 1, however many people or days it has to \
+cover, because what gets bought is one of them. "Food for two people for three \
+days" is one supply, not six. If you find yourself wanting to multiply \
+something like that, the honest move is to say so in the category name instead \
+- "three days of meals for two" at quantity 1.
+
 Budget allocations are rough guidance for a later step, not decisions. Leave \
 them out when you have no sound basis for a split.\
 

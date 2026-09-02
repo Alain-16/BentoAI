@@ -76,6 +76,14 @@ def describe(event: AuditEvent) -> tuple[str, str]:
         # what it means for the customer (§10.2 rule 5).
         return "Something went wrong", "The run stopped early. Try again."
 
+    if event.event_type == "BASKET_APPROVED":
+        total = payload.get("total")
+        items = payload.get("item_count") or 0
+        return (
+            "You approved the basket",
+            f"{items} items, {total}" if total else f"{items} items",
+        )
+
     if event.event_type == "QUESTIONS_ANSWERED":
         answered = payload.get("answered") or []
         return "Thanks - carrying on", ", ".join(answered)

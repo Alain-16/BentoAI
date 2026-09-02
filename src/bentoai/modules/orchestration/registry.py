@@ -43,7 +43,7 @@ def build_orchestrator(session:AsyncSession) -> ShoppingOrchestrator:
 
     orchestrator.register(MissionStatus.EVALUATING, EvaluationStep(gateway, settings))
 
-    orchestrator.register(MissionStatus.REVIEW, BasketOptimizerStep(gateway, settings))
+    orchestrator.register(MissionStatus.REVIEW, BasketOptimizerStep(session, gateway, settings))
 
 
     return orchestrator

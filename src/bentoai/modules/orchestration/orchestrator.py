@@ -178,6 +178,41 @@ class ShoppingOrchestrator:
         )
         return report
 
+    async def apply_customer_decision(
+        self,
+        mission: ShoppingMission,
+        target: MissionStatus,
+        event_type: str,
+        payload: dict | None = None,
+    ) -> ShoppingMission:
+        """Move a mission because the customer decided something.
+
+        Approving a basket is not a workflow step - no agent runs, nothing is
+        computed, a person simply said yes. But it is still a state transition,
+        and invariant 7 puts every one of those here rather than letting routes
+        set mission.status themselves. So it gets its own door instead of being
+        dressed up as a step it is not.
+
+        The state machine still validates the move, so an approval from the
+        wrong state is refused the same way any other bad transition is.
+        """
+        self._move(mission, target)
+        self._record(
+            mission,
+            event_type,
+            {**(payload or {}), "actor": "customer"},
+        )
+        await self.session.commit()
+        await self.session.refresh(mission)
+
+        logger.info(
+            "mission_customer_decision mission_id=%s to=%s event=%s",
+            mission.id,
+            mission.status.value,
+            event_type,
+        )
+        return mission
+
     def _move(self,mission:ShoppingMission,target:MissionStatus) -> None:
 
         if target is mission.status:

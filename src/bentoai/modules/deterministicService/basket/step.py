@@ -1,5 +1,7 @@
 import logging
 
+from sqlalchemy.ext.asyncio import AsyncSession
+
 from bentoai.config import Settings
 from bentoai.modules.deterministicService.basket.service import BasketOptimizerService
 from bentoai.modules.commerce.gateway import CommerceGateway
@@ -13,12 +15,21 @@ class BasketOptimizerStep:
 
     working_status = None
 
-    def __init__(self, gateway:CommerceGateway,settings:Settings) -> None:
-        self.gateway=gateway
-        self.settings=settings
+    def __init__(
+        self, session: AsyncSession, gateway: CommerceGateway, settings: Settings
+    ) -> None:
+        # Taken explicitly, the way PlanningStep does it, rather than reached
+        # for through the mission. The step writes basket rows now, and a
+        # session it was handed is easier to follow than one it went looking
+        # for.
+        self.session = session
+        self.gateway = gateway
+        self.settings = settings
 
     async def run(self,mission:ShoppingMission) -> StepOutcome:
-        outcome = await BasketOptimizerService(self.gateway, self.settings).run(mission)
+        outcome = await BasketOptimizerService(
+            self.session, self.gateway, self.settings
+        ).run(mission)
         solution = outcome.solution
 
         notes= list(solution.notes)

@@ -60,6 +60,7 @@ class RequirementRead(BaseModel):
     priority: RequirementPriority
     status: RequirementStatus
     position: int
+    quantity: int = 1
     budget_allocation: Decimal | None
 
 

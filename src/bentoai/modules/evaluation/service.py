@@ -158,7 +158,7 @@ class EvaluationService:
             return result
 
         # Cheap rules first, so the model only ever reads plausible products.
-        filtered = apply_hard_filters(candidates, mission)
+        filtered = apply_hard_filters(candidates, mission, requirement.quantity)
         result.rejected_tally = filtered.tally()
 
         if not filtered.accepted:

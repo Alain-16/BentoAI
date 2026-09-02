@@ -38,6 +38,7 @@ class RequirementRecommendationsRead(BaseModel):
     requirement_id: uuid.UUID
     category: str
     priority: RequirementPriority
+    quantity: int = 1
 
   
     considered: int
@@ -103,6 +104,7 @@ def to_schema(recommendations: list[dict]) -> list[RequirementRecommendationsRea
                 requirement_id=requirement.id,
                 category=requirement.category,
                 priority=requirement.priority,
+                quantity=requirement.quantity,
                 considered=group["considered"],
                 rejected=group["rejected"],
                 products=products,

@@ -115,6 +115,12 @@ class MissionRequirement(UUIDMixin,TimestampMixin,Base):
     )
     position: Mapped[int] = mapped_column(Integer, default=0, nullable=False)
 
+    # How many to buy. Everything downstream multiplies by this: the hard
+    # filter, the budget solver, and the basket line.
+    quantity: Mapped[int] = mapped_column(
+        Integer, default=1, server_default="1", nullable=False
+    )
+
    
     budget_allocation: Mapped[Decimal | None] = mapped_column(
         Numeric(12, 2), nullable=True

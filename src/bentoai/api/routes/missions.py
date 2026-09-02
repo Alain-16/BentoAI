@@ -11,11 +11,16 @@ from fastapi import APIRouter, HTTPException, status
 
 from bentoai.modules.deterministicService.basket.schemas import MissionBasketRead
 from bentoai.modules.deterministicService.basket.schemas import to_schema as basket_to_schema
+from bentoai.modules.deterministicService.basket.schemas import SelectionIn
 from bentoai.modules.deterministicService.basket.service import NothingToOptimize, build_basket_view
+from bentoai.modules.deterministicService.basket.smart_basket import (
+    ensure_basket,
+    select_product,
+)
 from bentoai.modules.deterministicService.audit.service import describe, recent_for_mission
 from bentoai.api.deps import CurrentUser, DbSession, OrchestratorDep
 from bentoai.modules.orchestration.orchestrator import NoStepForState, UnexpectedState
-from bentoai.modules.planner.models import MissionStatus
+from bentoai.modules.planner.models import BasketStatus, MissionStatus
 from bentoai.modules.planner.repository import MissionNotFound
 from bentoai.modules.planner.schemas import (
     MissionCreate,
@@ -285,9 +290,141 @@ async def get_basket(
             "Run /discover and /recommendations first.",
         )
 
-    view = await build_basket_view(mission, get_gateway())
+    view = await build_basket_view(session, mission, get_gateway())
 
     schema = basket_to_schema(mission, view)
     schema.notes = notes + schema.notes
     return schema
         
+
+@router.post("/{mission_id}/selections", response_model=MissionBasketRead)
+async def select_basket_product(
+    mission_id: uuid.UUID,
+    payload: SelectionIn,
+    session: DbSession,
+    user: CurrentUser,
+) -> MissionBasketRead:
+    """Choose a product for one requirement. This is both Keep and Swap.
+
+    The product has to be one of the options already offered for that
+    requirement. That is not fussiness - the pool is what survived the hard
+    filter and was priced, so anything outside it has not been checked against
+    the budget, the destination or availability, and putting it in a basket
+    would skip every one of those.
+    """
+    try:
+        mission = await MissionService(session).get_mission(mission_id, user.id)
+    except MissionNotFound:
+        raise HTTPException(status.HTTP_404_NOT_FOUND, "Mission not found")
+
+    if not mission.basket_options:
+        raise HTTPException(
+            status.HTTP_409_CONFLICT,
+            "There is no basket to change yet. Open /basket first.",
+        )
+
+    view = await build_basket_view(session, mission, get_gateway())
+
+    group = next(
+        (g for g in view.get("groups", []) if g["requirement"].id == payload.requirement_id),
+        None,
+    )
+    if group is None:
+        raise HTTPException(
+            status.HTTP_404_NOT_FOUND, "That requirement is not part of this mission."
+        )
+
+    entry = next(
+        (
+            option
+            for option in group["options"]
+            if option["candidate"].source_product_id == payload.product_id
+        ),
+        None,
+    )
+    if entry is None:
+        raise HTTPException(
+            status.HTTP_404_NOT_FOUND,
+            "That product is not one of the options for this requirement.",
+        )
+
+    await select_product(
+        session,
+        mission,
+        group["requirement"],
+        entry["candidate"],
+        entry["offer"],
+        by="customer",
+    )
+    await session.commit()
+    await session.refresh(mission)
+
+    # Rebuilt rather than patched. The totals, the "you changed this" marker and
+    # the price comparison all follow from the selection, and deriving them a
+    # second way here would be the same logic in two places waiting to disagree.
+    view = await build_basket_view(session, mission, get_gateway())
+    return basket_to_schema(mission, view)
+
+
+@router.post("/{mission_id}/approve", response_model=MissionBasketRead)
+async def approve_basket(
+    mission_id: uuid.UUID,
+    session: DbSession,
+    orchestrator: OrchestratorDep,
+    user: CurrentUser,
+) -> MissionBasketRead:
+    """Accept the basket, moving the mission to BASKET_READY.
+
+    This does not buy anything and it does not charge anybody. Checkout is a
+    later phase (§12.3 V4); what this does is mark the basket as the one the
+    customer has settled on, which is what §3.3 means by REVIEW -> BASKET_READY.
+    The screen says exactly that, because a button that sounds like it spends
+    money and does not is worse than no button.
+
+    Prices are re-checked here rather than trusted. §5.11 is explicit that a
+    stale price must not reach checkout, and this is the last point before it
+    would.
+    """
+    try:
+        mission = await MissionService(session).get_mission(mission_id, user.id)
+    except MissionNotFound:
+        raise HTTPException(status.HTTP_404_NOT_FOUND, "Mission not found")
+
+    if mission.status is not MissionStatus.REVIEW:
+        raise HTTPException(
+            status.HTTP_409_CONFLICT,
+            f"This mission is in {mission.status.value}, so there is nothing to approve.",
+        )
+
+    # A fresh look, not the numbers from whenever the page was opened.
+    view = await build_basket_view(session, mission, get_gateway())
+
+    if not view or not view.get("item_count"):
+        raise HTTPException(
+            status.HTTP_409_CONFLICT, "There is nothing in this basket to approve."
+        )
+
+    if view.get("blockers"):
+        raise HTTPException(
+            status.HTTP_409_CONFLICT,
+            "Some items cannot be bought right now. Resolve them before approving.",
+        )
+
+    basket = await ensure_basket(session, mission)
+    basket.status = BasketStatus.APPROVED
+
+    try:
+        await orchestrator.apply_customer_decision(
+            mission,
+            MissionStatus.BASKET_READY,
+            "BASKET_APPROVED",
+            {
+                "total": str(view["total"]),
+                "item_count": view["item_count"],
+                "merchant_count": view["merchant_count"],
+            },
+        )
+    except InvalidTransition as exc:
+        raise HTTPException(status.HTTP_409_CONFLICT, str(exc))
+
+    return basket_to_schema(mission, view)

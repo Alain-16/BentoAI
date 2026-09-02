@@ -68,7 +68,9 @@ def excluded_brands(mission: ShoppingMission) -> list[str]:
 
 
 def apply_hard_filters(
-    candidates: list[CandidateProduct], mission: ShoppingMission
+    candidates: list[CandidateProduct],
+    mission: ShoppingMission,
+    quantity: int = 1,
 ) -> FilterOutcome:
     """Keep the candidates that could work; record why the rest could not.
 
@@ -80,7 +82,7 @@ def apply_hard_filters(
     banned = excluded_brands(mission)
 
     for candidate in candidates:
-        reason = _first_failure(candidate, budget, currency, banned)
+        reason = _first_failure(candidate, budget, currency, banned, quantity)
 
         if reason is None:
             outcome.accepted.append(candidate)
@@ -107,6 +109,7 @@ def _first_failure(
     budget: Decimal | None,
     currency: str,
     banned: list[str],
+    quantity: int = 1,
 ) -> RejectionReason | None:
     """Run the rules in order and return the first one this product breaks."""
 
@@ -123,7 +126,10 @@ def _first_failure(
         return RejectionReason.CURRENCY_MISMATCH
 
  
-    if budget is not None and offer.price_amount > budget:
+    # The whole line, not one unit. Three shirts at 80 each break a 200 budget
+    # even though no single shirt does, and checking the unit price would let
+    # all three through to a basket that cannot be afforded.
+    if budget is not None and offer.price_amount * quantity > budget:
         return RejectionReason.OVER_BUDGET
 
     # A brand the customer ruled out. We match on the title
