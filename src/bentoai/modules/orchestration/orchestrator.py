@@ -8,8 +8,12 @@ from bentoai.modules.orchestration.steps import WorkflowStep
 from bentoai.modules.planner.models import MissionStatus, ShoppingMission
 from bentoai.modules.planner.repository import MissionNotFound, MissionRepository
 from bentoai.modules.planner.state_machine import assert_can_transition
+from enum import Enum
+from dataclasses import dataclass, field
 
 logger = logging.getLogger(__name__)
+
+MAX_STEP_PER_RUN = 12
 
 class NoStepForState(Exception):
 
@@ -26,6 +30,31 @@ class UnexpectedState(Exception):
         )
         self.expected = expected
         self.actual = actual
+
+class StopReason(str, Enum):
+
+    WAITING_FOR_CUSTOMER = "waiting_for_customer"
+
+    HELD = "held"
+
+    NO_FURTHER_STEP= "no_further_step"
+
+    STEP_LIMIT = "step_limit"
+
+    FAILED= "failed"
+
+@dataclass
+class RunReport:
+
+    mission_id:uuid.UUID
+    status:MissionStatus
+    stop_reason:StopReason
+    steps_run: int = 0
+    notes: list[str] = field(default_factory=list)
+    error: str | None = None
+
+
+
 
 
 class ShoppingOrchestrator:
@@ -67,7 +96,10 @@ class ShoppingOrchestrator:
         outcome = await step.run(mission)
 
         self._move(mission,outcome.next_status)
-        self._record(mission, outcome.event_type,outcome.event_payload)
+
+        mission.pending_questions = list(outcome.questions)
+
+        self._record(mission, outcome.event_type,{**outcome.event_payload, "notes": outcome.notes})
 
         await self.session.commit()
         await self.session.refresh(mission)
@@ -81,6 +113,70 @@ class ShoppingOrchestrator:
         )
 
         return mission,outcome.notes
+
+    async def run_until_blocked(self,mission_id:uuid.UUID, user_id: uuid.UUID) -> RunReport:
+
+        mission = await self.repo.get_for_user(mission_id, user_id)
+        if mission is None:
+            raise MissionNotFound(str(mission_id))
+
+        notes: list[str] = []
+        steps_run = 0
+
+        while True:
+
+            if mission.pending_questions:
+                reason= StopReason.WAITING_FOR_CUSTOMER
+                break
+
+            if mission.status not in self._steps:
+                reason= StopReason.NO_FURTHER_STEP
+                break
+
+            if steps_run >= MAX_STEP_PER_RUN:
+                reason = StopReason.STEP_LIMIT
+                break
+
+            before = mission.status
+            mission, step_notes = await self.advance(mission_id, user_id, expected_from=before)
+
+            notes.extend(step_notes)
+            steps_run+=1
+
+            if mission.status is before:
+                reason = StopReason.HELD
+                break
+
+        report = RunReport(
+            mission_id=mission_id,
+            status=mission.status,
+            stop_reason=reason,
+            steps_run=steps_run,
+            notes=notes,
+        )
+
+        self._record(
+            mission,
+            "RUN_FINISHED",
+            {
+                "stop_reason": reason.value,
+                "steps_run": steps_run,
+                "status": mission.status.value,
+                "questions": len(mission.pending_questions or []),
+
+            },
+        )
+
+        await self.session.commit()
+
+        logger.info(
+            "mission_run_finished mission_id=%s status=%s steps=%s reason=%s",
+            mission.id,
+            mission.status.value,
+            steps_run,
+            reason.value,
+        )
+        return report
 
     def _move(self,mission:ShoppingMission,target:MissionStatus) -> None:
 

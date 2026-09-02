@@ -15,6 +15,8 @@ class StepOutcome:
 
     notes: list[str] = field(default_factory=list)
 
+    questions: list[dict] = field(default_factory=list)
+
 
 class WorkflowStep(Protocol):
 
