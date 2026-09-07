@@ -1,0 +1,26 @@
+# Docker sends this whole folder to the daemon before reading the Dockerfile.
+# Everything listed here is either useless in an image or dangerous in one.
+
+# 197MB of virtualenv built against this machine's paths. The image builds its
+# own; if a COPY ever picked this up, imports would resolve to paths that do
+# not exist in the container.
+.venv
+
+# Secrets. A file copied into a layer stays in that image forever - deleting it
+# later only adds a layer that hides it, and anyone who pulls the image can read
+# it back. The container gets its configuration from environment variables.
+.env
+.env.*
+
+.git
+.gitignore
+__pycache__/
+*.py[cod]
+.pytest_cache/
+.ruff_cache/
+.mypy_cache/
+
+# Working notes, not application code.
+reference.py
+*.md
+!README.md
