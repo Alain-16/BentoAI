@@ -4,6 +4,7 @@ import uuid
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from bentoai.modules.deterministicService.audit.models import ActorType, AuditEvent
+from bentoai.modules.orchestration.graph import RunState, build_run_graph, stop_reason
 from bentoai.modules.orchestration.steps import WorkflowStep
 from bentoai.modules.planner.models import MissionStatus, ShoppingMission
 from bentoai.modules.planner.repository import MissionNotFound, MissionRepository
@@ -65,6 +66,16 @@ class ShoppingOrchestrator:
 
         self._steps: dict[MissionStatus, WorkflowStep] = {}
 
+    @property
+    def steps(self) -> dict[MissionStatus, WorkflowStep]:
+        """What is registered, keyed by the state that triggers it.
+
+        Exposed because the graph builds its nodes from this - registry.py stays
+        the one place the workflow is described, and the graph reads it rather
+        than restating it.
+        """
+        return dict(self._steps)
+
     def register(self,trigger_status:MissionStatus, step:WorkflowStep) -> None:
 
         if trigger_status in self._steps:
@@ -114,45 +125,65 @@ class ShoppingOrchestrator:
 
         return mission,outcome.notes
 
-    async def run_until_blocked(self,mission_id:uuid.UUID, user_id: uuid.UUID) -> RunReport:
+    async def run_until_blocked(
+        self, mission_id: uuid.UUID, user_id: uuid.UUID, checkpointer=None
+    ) -> RunReport:
+        """Keep advancing the mission until it needs the customer or is done.
 
+        The stepping is done by a LangGraph graph compiled from whatever is
+        registered - see graph.py. What that changed is only how the loop is
+        expressed: the same advance() runs the same steps, commits after each
+        one, and applies the same state transitions.
+
+        What it bought: a whole mission now appears in LangSmith as one trace
+        with a span per step, instead of four unrelated model calls.
+        """
         mission = await self.repo.get_for_user(mission_id, user_id)
         if mission is None:
             raise MissionNotFound(str(mission_id))
 
-        notes: list[str] = []
-        steps_run = 0
+        # Passed in rather than fetched. The orchestrator is handed the
+        # resources it needs - a session, and now a checkpointer - which is what
+        # lets it be used from a request, a background task or a test without
+        # each one having to arrange the others.
+        compiled = build_run_graph(self, MAX_STEP_PER_RUN, checkpointer)
+        node_names = {status.value for status in self._steps}
 
-        while True:
+        final: RunState = await compiled.ainvoke(
+            {
+                "mission_id": str(mission_id),
+                "user_id": str(user_id),
+                "status": mission.status.value,
+                "previous": None,
+                "has_questions": bool(mission.pending_questions),
+                "steps_run": 0,
+                "notes": [],
+            },
+            {
+                "recursion_limit": MAX_STEP_PER_RUN * 2 + 5,
+                # One thread per mission, so a mission's runs accumulate as its
+                # own history rather than being mixed with everyone else's.
+                #
+                # Note this is fresh input every time, not a resume. That is
+                # deliberate: after REVIEW -> SEARCHING the mission genuinely
+                # has to run again, and handing a finished thread new input is
+                # what makes it do so.
+                "configurable": {"thread_id": str(mission_id)},
+            },
+        )
 
-            if mission.pending_questions:
-                reason= StopReason.WAITING_FOR_CUSTOMER
-                break
+        reason = StopReason(
+            stop_reason(final, node_names, MAX_STEP_PER_RUN) or "no_further_step"
+        )
 
-            if mission.status not in self._steps:
-                reason= StopReason.NO_FURTHER_STEP
-                break
-
-            if steps_run >= MAX_STEP_PER_RUN:
-                reason = StopReason.STEP_LIMIT
-                break
-
-            before = mission.status
-            mission, step_notes = await self.advance(mission_id, user_id, expected_from=before)
-
-            notes.extend(step_notes)
-            steps_run+=1
-
-            if mission.status is before:
-                reason = StopReason.HELD
-                break
+        await self.session.refresh(mission)
 
         report = RunReport(
-            mission_id=mission_id,
+            mission_id=mission.id,
             status=mission.status,
             stop_reason=reason,
-            steps_run=steps_run,
-            notes=notes,
+            steps_run=final["steps_run"],
+            notes=final["notes"],
         )
 
         self._record(
@@ -160,58 +191,21 @@ class ShoppingOrchestrator:
             "RUN_FINISHED",
             {
                 "stop_reason": reason.value,
-                "steps_run": steps_run,
+                "steps_run": final["steps_run"],
                 "status": mission.status.value,
                 "questions": len(mission.pending_questions or []),
-
             },
         )
-
         await self.session.commit()
 
         logger.info(
-            "mission_run_finished mission_id=%s status=%s steps=%s reason=%s",
+            "mission_run_finished mission_id=%s status=%s steps=%d reason=%s",
             mission.id,
             mission.status.value,
-            steps_run,
+            final["steps_run"],
             reason.value,
         )
         return report
-
-    async def apply_customer_decision(
-        self,
-        mission: ShoppingMission,
-        target: MissionStatus,
-        event_type: str,
-        payload: dict | None = None,
-    ) -> ShoppingMission:
-        """Move a mission because the customer decided something.
-
-        Approving a basket is not a workflow step - no agent runs, nothing is
-        computed, a person simply said yes. But it is still a state transition,
-        and invariant 7 puts every one of those here rather than letting routes
-        set mission.status themselves. So it gets its own door instead of being
-        dressed up as a step it is not.
-
-        The state machine still validates the move, so an approval from the
-        wrong state is refused the same way any other bad transition is.
-        """
-        self._move(mission, target)
-        self._record(
-            mission,
-            event_type,
-            {**(payload or {}), "actor": "customer"},
-        )
-        await self.session.commit()
-        await self.session.refresh(mission)
-
-        logger.info(
-            "mission_customer_decision mission_id=%s to=%s event=%s",
-            mission.id,
-            mission.status.value,
-            event_type,
-        )
-        return mission
 
     def _move(self,mission:ShoppingMission,target:MissionStatus) -> None:
 

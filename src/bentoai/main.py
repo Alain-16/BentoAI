@@ -4,6 +4,7 @@ from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 from bentoai.api.deps import SettingsDeps
 from bentoai.config import get_settings
+from bentoai.shared.checkpointer import close_checkpointer
 from bentoai.shared.database import get_engine
 from bentoai.shared.http import get_http_client
 from bentoai.api.routes import missions
@@ -24,6 +25,7 @@ async def lifespan(app: FastAPI):
 
     logger.info("Shutting down %s", settings.app.name)
 
+    await close_checkpointer()
     await get_engine().dispose()
     await get_http_client().aclose()
 

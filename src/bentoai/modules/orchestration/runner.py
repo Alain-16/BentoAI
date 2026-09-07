@@ -4,6 +4,7 @@ import uuid
 
 from bentoai.modules.deterministicService.audit.models import AuditEvent, ActorType
 from bentoai.modules.orchestration.registry import build_orchestrator
+from bentoai.shared.checkpointer import get_checkpointer
 from bentoai.shared.database import get_session_factory
 
 
@@ -40,7 +41,9 @@ async def _run(mission_id:uuid.UUID, user_id:uuid.UUID) -> None:
 
         async with session_factory() as session:
             orchestrator = build_orchestrator(session)
-            await orchestrator.run_until_blocked(mission_id, user_id)
+            await orchestrator.run_until_blocked(
+                mission_id, user_id, await get_checkpointer()
+            )
 
     except Exception as exc:
         logger.exception("mission_run_failed mission_id=%s", mission_id)
