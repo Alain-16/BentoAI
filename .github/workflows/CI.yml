@@ -122,7 +122,36 @@ jobs:
           ssh -i ~/.ssh/bentoai_alain \
           "${{ secrets.PROD_USER }}@${{ secrets.PROD_HOST }}" \
           "docker ps"
+    
           
         
   
   
+  deploy:
+     needs: docker
+     if: github.ref == 'refs/heads/main'
+     runs-on: ubuntu-latest
+     steps:
+      - uses: actions/checkout@v4
+      - name: Configure ssh
+        run: |
+            mkdir -p ~/.ssh
+            echo "${{ secrets.PROD_SSH_KEY }}" > ~/.ssh/bentoai_ci
+            chmod 600 ~/.ssh/bentoai_ci
+            ssh-keyscan -H "${{ secrets.PROD_HOST }}" >> ~/.ssh/known_hosts
+            
+      - name: Copy docker-compose.yml
+        run: |
+          scp -i ~/.ssh/bentoai_ci \
+            docker-compose.yml \
+            "${{ secrets.PROD_USER }}@${{ secrets.PROD_HOST }}:/opt/bentoai/docker-compose.yml"
+            
+      - name: Deploy to contabo
+        run: |
+          ssh -i ~/.ssh/bentoai_ci \ 
+            "${{ secrets.PROD_USER }}@${{ secrets.PROD_HOST }}" \
+            "cd /opt/bentoai && \
+            IMAGE_URI=ghcr.io/alain-16/bentoai:${{ github.sha }} \
+            docker compose pull && \
+            IMAGE_URL=ghcr.io/alain-16/bentoai:${{ github.sha }} \
+            docker compose up -d"
