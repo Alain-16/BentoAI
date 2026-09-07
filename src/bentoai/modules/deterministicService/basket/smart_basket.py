@@ -35,6 +35,17 @@ async def ensure_basket(session: AsyncSession, mission: ShoppingMission) -> Bask
             status=BasketStatus.DRAFT,
             currency=mission.budget_currency,
         )
+
+        # Say out loud that a new basket has no items.
+        #
+        # Without this, the collection is simply "never touched", and after the
+        # flush below SQLAlchemy treats that as "not loaded yet" rather than
+        # "empty" - so the first read goes to the database to find out. In async
+        # that read happens outside the await machinery and raises
+        # MissingGreenlet instead of returning []. The query path above never
+        # hits it because selectinload has already filled the collection.
+        basket.items = []
+
         session.add(basket)
       
         await session.flush()

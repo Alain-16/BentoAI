@@ -62,22 +62,6 @@ class RunReport:
 
 # ---------------------------------------------------------------------------
 # The run loop, as a graph
-#
-# This is machinery, not a description of the workflow. Which steps exist and
-# what triggers them lives in graph.py; everything here only knows how to keep
-# calling them until the mission stops moving.
-#
-# WHY EVERY EDGE IS CONDITIONAL
-#
-# A mission is not a fixed chain. Discovery holds at SEARCHING when a required
-# item found nothing. The basket optimizer returns REVIEW every time, because
-# building a basket is not the customer accepting one. REVIEW can go back to
-# SEARCHING when somebody edits their plan. An unanswered question stops the run
-# from wherever it is.
-#
-# So there is no "after discovery, evaluate" to write down - only "after any
-# step, look at where the mission ended up". One router, shared by every node,
-# reading the same status the rest of the application reads.
 # ---------------------------------------------------------------------------
 
 
