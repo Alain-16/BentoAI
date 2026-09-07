@@ -35,7 +35,7 @@ from bentoai.modules.planner.service import MissionService
 from bentoai.modules.planner.state_machine import InvalidTransition
 from bentoai.modules.evaluation.schemas import MissionRecommendationsRead, to_schema
 from bentoai.modules.evaluation.service import NothingToEvaluate, build_recommendations
-from bentoai.modules.orchestration.registry import get_gateway
+from bentoai.modules.orchestration.graph import get_gateway
 from bentoai.modules.orchestration import runner
 from bentoai.modules.deterministicService.audit.models import ActorType,AuditEvent
 

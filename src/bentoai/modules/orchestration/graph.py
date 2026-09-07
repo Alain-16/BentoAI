@@ -1,114 +1,85 @@
-"""The workflow as a LangGraph.
+"""The workflow: which steps exist, and what state triggers each one.
+
+This is the readable map. One line per agent, keyed by the mission state that
+calls for it. Adding a fifth agent means writing its step and adding a line
+here - never an if/elif chain in the orchestrator, and never a route per agent
+(§9.2 forbids exposing agents as endpoints).
+
+WHY THERE ARE NO EDGES IN THIS FILE
+
+Because the mission's own status already carries them. Discovery holds at
+SEARCHING when it finds nothing; the basket optimizer always returns REVIEW;
+REVIEW goes back to SEARCHING when a customer edits their plan. An edge saying
+"after discovery, evaluate" would be wrong in every one of those cases.
+
+So the graph is compiled from the table below rather than from a list of edges,
+and the one router in orchestrator.py asks the mission where it got to. There is
+one description of the workflow, and this is it.
 """
 
-import logging
-import uuid
-from typing import TYPE_CHECKING, TypedDict
+from functools import lru_cache
 
-from langgraph.graph import END, StateGraph
+from sqlalchemy.ext.asyncio import AsyncSession
 
+from bentoai.config.settings import get_settings
+from bentoai.modules.commerce.gateway import CommerceGateway
+from bentoai.modules.commerce.providers.shopify_global import (
+    ShopifyGlobalCatalogProvider,
+)
+from bentoai.modules.deterministicService.basket.step import BasketOptimizerStep
+from bentoai.modules.discovery.step import DiscoveryStep
+from bentoai.modules.evaluation.step import EvaluationStep
+from bentoai.modules.orchestration.orchestrator import ShoppingOrchestrator
 from bentoai.modules.planner.models import MissionStatus
-
-if TYPE_CHECKING:  # pragma: no cover
-    from bentoai.modules.orchestration.orchestrator import ShoppingOrchestrator
-
-logger = logging.getLogger(__name__)
+from bentoai.modules.planner.step import PlanningStep
+from bentoai.shared.http import get_http_client
 
 
-class RunState(TypedDict):
-    """What travels between nodes. The mission itself stays in the database."""
+@lru_cache
+def get_gateway() -> CommerceGateway:
+    """The one door to external commerce, built once.
 
-    mission_id: str
-    user_id: str
-
-    # Where the mission is now, and where it was before the last step ran.
-    # Equal means the step held, which is how a run ends.
-    status: str
-    previous: str | None
-
-    has_questions: bool
-    steps_run: int
-    notes: list[str]
-
-
-def stop_reason(state: RunState, node_names: set[str], max_steps: int) -> str | None:
-    """Why this run should end, or None if it should carry on.
-
-    One function, used by the router to decide and by the caller to report, so
-    the reason a run stopped and the decision to stop it can never disagree.
+    Cached because the providers behind it hold an HTTP client with a
+    connection pool. A new gateway per request would open a new pool per
+    request.
     """
-    if state["has_questions"]:
-        return "waiting_for_customer"
+    settings = get_settings()
+    gateway = CommerceGateway()
 
-    # A step ran and left the mission where it started. Running it again would
-    # cost the same money for the same answer.
-    if state["previous"] is not None and state["status"] == state["previous"]:
-        return "held"
-
-    if state["steps_run"] >= max_steps:
-        return "step_limit"
-
-    if state["status"] not in node_names:
-        return "no_further_step"
-
-    return None
-
-
-def build_run_graph(orchestrator: "ShoppingOrchestrator", max_steps: int):
-    """Compile a graph from whatever steps are registered.
-
-
-    """
-    node_names = {status.value for status in orchestrator.steps}
-
-    def make_node(status: MissionStatus):
-        async def node(state: RunState) -> dict:
-            # advance() is unchanged - it runs one step, applies the state
-            # transition, writes the audit event and commits. The graph decides
-            # when to call it, not what it does.
-            mission, notes = await orchestrator.advance(
-                uuid.UUID(state["mission_id"]),
-                uuid.UUID(state["user_id"]),
-                expected_from=status,
-            )
-            return {
-                "previous": status.value,
-                "status": mission.status.value,
-                "has_questions": bool(mission.pending_questions),
-                "steps_run": state["steps_run"] + 1,
-                "notes": state["notes"] + notes,
-            }
-
-        return node
-
-    def route(state: RunState) -> str:
-        reason = stop_reason(state, node_names, max_steps)
-        if reason is not None:
-            logger.info(
-                "graph_stop mission_id=%s reason=%s at=%s",
-                state["mission_id"],
-                reason,
-                state["status"],
-            )
-            return END
-        # Otherwise the next node is simply the one registered for the state the
-        # mission is now in.
-        return state["status"]
-
-    graph = StateGraph(RunState)
-
-    for status in orchestrator.steps:
-        graph.add_node(status.value, make_node(status))
-
-    # Where to begin is the same question as where to go next, so the entry
-    # point uses the same router. On the first pass "previous" is None, so the
-    # held check cannot fire and it simply picks the node for the mission's
-    # current state.
-    graph.set_conditional_entry_point(route, {**{n: n for n in node_names}, END: END})
-
-    for name in node_names:
-        graph.add_conditional_edges(
-            name, route, {**{n: n for n in node_names}, END: END}
+    gateway.register(
+        ShopifyGlobalCatalogProvider(
+            endpoint=settings.commerce.shopify_catalog_endpoint,
+            agent_profile_url=settings.commerce.shopify_agent_profile_url,
+            client=get_http_client(),
+            timeout_seconds=settings.commerce.request_timeout_seconds,
         )
+    )
 
-    return graph.compile()
+    return gateway
+
+
+def build_orchestrator(session: AsyncSession) -> ShoppingOrchestrator:
+    """The workflow, assembled.
+
+    Read the four lines below and you know what this product does: it plans,
+    it searches, it compares, it builds a basket - and which state each of
+    those happens in.
+    """
+    gateway = get_gateway()
+    settings = get_settings()
+
+    orchestrator = ShoppingOrchestrator(session)
+
+    orchestrator.register(MissionStatus.DRAFT, PlanningStep(session))
+    orchestrator.register(MissionStatus.SEARCHING, DiscoveryStep(gateway, settings))
+    orchestrator.register(MissionStatus.EVALUATING, EvaluationStep(gateway, settings))
+
+    # Registered at REVIEW and returns REVIEW, so the mission holds where it is.
+    # Only one step may register per state, and REVIEW is now taken - so
+    # POST /selections and /approve move the mission through
+    # apply_customer_decision instead of through a step.
+    orchestrator.register(
+        MissionStatus.REVIEW, BasketOptimizerStep(session, gateway, settings)
+    )
+
+    return orchestrator

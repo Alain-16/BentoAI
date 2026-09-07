@@ -7,7 +7,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from bentoai.config import Settings, get_settings
 from bentoai.modules.deterministicService.users.models import User
 from bentoai.modules.orchestration.orchestrator import ShoppingOrchestrator
-from bentoai.modules.orchestration.registry import build_orchestrator
+from bentoai.modules.orchestration.graph import build_orchestrator
 from bentoai.shared.database import get_db_session
 
 SettingsDeps = Annotated[Settings, Depends(get_settings)]

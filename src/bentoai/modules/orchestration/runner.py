@@ -3,7 +3,7 @@ import logging
 import uuid
 
 from bentoai.modules.deterministicService.audit.models import AuditEvent, ActorType
-from bentoai.modules.orchestration.registry import build_orchestrator
+from bentoai.modules.orchestration.graph import build_orchestrator
 from bentoai.shared.checkpointer import get_checkpointer
 from bentoai.shared.database import get_session_factory
 
