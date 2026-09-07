@@ -1,0 +1,102 @@
+name: bentoai-backent
+
+on:
+  push:
+    branches: [development]
+  pull_request:
+    branches: [development]
+
+permissions: 
+  contents: read
+
+jobs:
+  app:
+    runs-on: ubuntu-latest
+    services:
+      postgres:
+        image: postgres:17-alpine
+        env:
+          POSTGRES_USER: bentoai
+          POSTGRES_PASSWORD: bentoai
+          POSTGRES_DB: bentoai
+        ports:
+          - 5432:5432
+
+        options: >-
+            --health-cmd "pg_isready -U bentoai -d bentoai"
+            --health-interval 5s
+            --health-timeout 5s
+            --health-retries 10
+            
+    env:
+      DB_URL: postgresql+asyncpg://bentoai:bentoai@localhost:5432/bentoai
+      LLM_API_KEY: ci-not-used
+      JWT_SECRET_KEY: ci-not-used
+      OTP_PEPPER: ci-not-used
+
+    steps:
+      - uses: actions/checkout@v4
+      - name: install uv
+        uses: astral-sh/setup-uv@v5
+        with:
+          version: "0.12.6"
+          enable-cache: true
+      - name: install dependencies
+        run: uv sync --frozen
+
+      - name: Run migrations
+        run: uv run alembic upgrade head
+      - name: Start server
+        run: |
+          uv run uvicorn bentoai.main:app --host 127.0.0.1 --port 8000 > server.log 2>&1 &
+          for i in $(seq 1 30); do
+            if curl -sf http://127.0.0.1:8000/health > /dev/null; then
+              echo "server answered after ${i}s"
+              exit 0
+            fi
+            sleep 1
+          done
+          echo "server never answered"
+          cat server.log
+          exit 1
+      - name: Smoke test
+        run: |
+          set -e
+          MISSION=$(curl -sf -X POST http://127.0.0.1:8000/api/v1/missions \
+            -H 'content-type: application/json' \
+            -d '{"goal":"ci smoke test","budget_amount":100,"budget_currency":"CAD","priority":"value"}' \
+            | python3 -c 'import json,sys; print(json.load(sys.stdin)["id"])')
+          echo "created $MISSION"
+
+          curl -sf "http://127.0.0.1:8000/api/v1/missions/$MISSION" \
+            | python3 -c '
+          import json, sys
+          m = json.load(sys.stdin)
+          assert m["status"] == "draft", m["status"]
+          assert m["priority"] == "value", m["priority"]
+          assert m["budget_amount"] == "100.00", m["budget_amount"]
+          assert m["pending_questions"] == [], m["pending_questions"]
+          print("read back correctly")
+          '
+      - name: Server log
+        if: failure()
+        run: cat server.log
+    
+        
+  docker:
+    runs-on: ubuntu-latest
+
+    steps:
+      - uses: actions/checkout@v4
+      - uses: docker/setup-buildx-actions@v3
+
+      - name: Build the image
+        uses: docker/build-push-action@v6
+        with:
+          context: .
+          push: false
+          cache-from: type=gha
+          cache-to: type=gha,mode=max
+  
+  
+  
