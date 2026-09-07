@@ -1,6 +1,7 @@
 import logging
 from dataclasses import dataclass, field
 from datetime import datetime, timezone
+import asyncio
 
 from bentoai.config import Settings
 from bentoai.modules.commerce.dtos import CandidateProduct
@@ -70,6 +71,8 @@ class EvaluationService:
 
         by_id = {str(r.id): r for r in mission.requirements}
 
+        work: list[tuple[MissionRequirement, list[CandidateProduct]]] = []
+
         for requirement_id, product_id in ids_by_requirement.items():
             requirement = by_id.get(requirement_id)
 
@@ -79,13 +82,32 @@ class EvaluationService:
                 continue
 
             candidates = [products[pid] for pid in product_id if pid in products]
-            outcome.results.append(
-                await self._evaluate_one(mission, requirement, candidates)
-            )
+            work.append((requirement, candidates))
+
+        limit = asyncio.Semaphore(self.settings.llm.max_concurrency)
+
+        async def evaluate(requirement:MissionRequirement, candidates: list[CandidateProduct]) -> RequirementResult:
+                async with limit:
+                    return await self._evaluate_one(mission, requirement,candidates)
+        results = await asyncio.gather(*(evaluate(requirement, candidates) for requirement, candidates in work), return_exceptions=True)
+        for (requirement, candidates), result in zip(work, results, strict=True):
+                if isinstance(result, BaseException):
+                    logger.warning(
+                        "evaluation_failed requirement=%s error=%s",
+                        requirement.category,
+                        result,
+                    )
+                    outcome.results.append(
+                        RequirementResult(
+                            requirement=requirement, considered=len(candidates)
+                        )
+                    )
+                else:
+                    outcome.results.append(result)
 
         outcome.results.sort(key=lambda r: r.requirement.position)
 
-        self._write_back(mission, outcome)
+        self._write_back(mission,outcome)
         return outcome
 
     def _read_stored_ids(self, stored: dict) -> dict[str, list[str]]:
@@ -170,7 +192,9 @@ class EvaluationService:
 
         # The shortlist is passed again, in the same order, because the model
         # answered by position within it.
-        result.ranked = score_candidates(shortlist, evaluation.assessments)
+        result.ranked = score_candidates(
+            shortlist, evaluation.assessments, mission.priority.value
+        )
 
         return result
 

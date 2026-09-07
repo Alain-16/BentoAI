@@ -27,6 +27,24 @@ WEIGHT_QUALITY = 0.25
 WEIGHT_PRICE = 0.20
 WEIGHT_PREFERENCE = 0.20
 
+# What each priority actually changes.
+#
+# Requirement match never drops below 0.30 in any of these. Whatever somebody is
+# optimising for, a product that does not do the job is no use - so the thing
+# that can move is how the remaining weight is split between how good something
+# is and what it costs.
+#
+# Each row adds to 1.0, which is what keeps two products comparable.
+WEIGHTS_BY_PRIORITY: dict[str, tuple[float, float, float, float]] = {
+    # requirement, quality, price, preference
+    "balanced": (0.35, 0.25, 0.20, 0.20),
+    "quality": (0.35, 0.35, 0.10, 0.20),
+    "value": (0.30, 0.15, 0.35, 0.20),
+    # No delivery data exists, so there is nothing for speed to weigh. It scores
+    # as balanced rather than pretending to do something.
+    "speed": (0.35, 0.25, 0.20, 0.20),
+}
+
 FIT_VALUES = {FitLevel.HIGH: 1.0, FitLevel.MEDIUM: 0.6, FitLevel.LOW: 0.2}
 
 CONFIDENCE_VALUES = {Confidence.HIGH: 1.0, Confidence.MEDIUM: 0.6, Confidence.LOW: 0.2}
@@ -50,11 +68,16 @@ class ScoredCandidate:
 def score_candidates(
     candidates: list[CandidateProduct],
     assessments: list[CandidateAssessment],
+    priority: str = "balanced",
 ) -> list[ScoredCandidate]:
     """Rank one requirement's candidates, best first.
     """
     if not candidates:
         return []
+
+    weight_requirement, weight_quality, weight_price, weight_preference = (
+        WEIGHTS_BY_PRIORITY.get(priority, WEIGHTS_BY_PRIORITY["balanced"])
+    )
 
     
     by_index: dict[int, CandidateAssessment] = {}
@@ -87,10 +110,10 @@ def score_candidates(
         price_score = price_scores[index - 1]
 
         total = (
-            requirement_score * WEIGHT_REQUIREMENT
-            + quality_score * WEIGHT_QUALITY
-            + price_score * WEIGHT_PRICE
-            + preference_score * WEIGHT_PREFERENCE
+            requirement_score * weight_requirement
+            + quality_score * weight_quality
+            + price_score * weight_price
+            + preference_score * weight_preference
         )
 
         scored.append(

@@ -115,6 +115,19 @@ class LLMSettings(BaseSettings):
     max_tokens: int = 4096
     timeout_seconds: int = 60
 
+    # How many attempts a call gets before giving up, including the first.
+    # Timeouts and server errors are retried; a refusal is not, because the
+    # answer would be the same (§10.2 rule 2).
+    max_retries: int = 3
+
+    # How many model calls may be in flight at once.
+    #
+    # Evaluation asks one question per requirement and those questions are
+    # independent, so they run together rather than one after another. Bounded
+    # because a mission with twenty requirements firing twenty simultaneous
+    # calls is how a provider rate limit gets found the hard way.
+    max_concurrency: int = 5
+
 class CommerceSettings(BaseSettings):
 
     model_config = _BASE_CONFIG | SettingsConfigDict(env_prefix="COMMERCE_")

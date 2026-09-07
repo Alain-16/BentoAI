@@ -42,11 +42,7 @@ class PlannedRequirement(BaseModel):
         default=None, ge=0, description="Rough share of the budget for this item"
     )
 
-    # How many of this item the customer wants.
-    #
-    # ge/le are not decoration. A model asked for a number will occasionally
-    # return 0, or 500, and pydantic refusing the answer here is cheaper than
-    # the basket quietly pricing five hundred t-shirts.
+
     quantity: int = Field(
         default=1,
         ge=1,
@@ -89,3 +85,4 @@ class PlanningRequest(BaseModel):
     budget_amount: Decimal | None = None
     budget_currency: str = "CAD"
     location: str | None = None
+    priority: str | None = None

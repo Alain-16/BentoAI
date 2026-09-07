@@ -25,6 +25,24 @@ class MissionStatus(str, Enum):
     COMPLETE = "complete"
 
 
+class MissionPriority(str, Enum):
+    """What the customer wants optimised for.
+
+    This is not decoration - it changes the weights the scoring engine uses, so
+    picking Value really does make cheaper products win more often.
+
+    SPEED is here because the brief asks for it, but nothing scores delivery
+    yet: the catalogue returns no shipping time. It behaves as BALANCED until
+    there is a number to weigh, and the composer says so rather than offering a
+    choice that does nothing.
+    """
+
+    QUALITY = "quality"
+    VALUE = "value"
+    BALANCED = "balanced"
+    SPEED = "speed"
+
+
 class RequirementPriority(str, Enum):
     REQUIRED = "required"
     OPTIONAL = "optional"
@@ -67,6 +85,15 @@ class ShoppingMission(UUIDMixin, TimestampMixin,Base):
     budget_currency: Mapped[str] = mapped_column(String(3), default="CAD")
 
     location: Mapped[str | None] = mapped_column(String(255), nullable=True)
+
+    # What to optimise for. Read by the planner and, more importantly, by the
+    # scoring engine, which uses a different set of weights for each.
+    priority: Mapped[MissionPriority] = mapped_column(
+        _enum(MissionPriority),
+        default=MissionPriority.BALANCED,
+        server_default=MissionPriority.BALANCED.value,
+        nullable=False,
+    )
 
     constraints: Mapped[dict] = mapped_column(JSONB, default=dict, nullable=False)
     preferences: Mapped[dict] = mapped_column(JSONB, default=dict, nullable=False)

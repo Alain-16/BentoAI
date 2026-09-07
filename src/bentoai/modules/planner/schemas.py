@@ -12,6 +12,7 @@ from decimal import Decimal
 from pydantic import BaseModel, ConfigDict, Field, computed_field
 
 from bentoai.modules.planner.models import (
+    MissionPriority,
     MissionStatus,
     RequirementPriority,
     RequirementStatus,
@@ -48,6 +49,7 @@ class MissionCreate(BaseModel):
     budget_amount: Decimal | None = Field(default=None, gt=0)
     budget_currency: str = Field(default="CAD", min_length=3, max_length=3)
     location: str | None = Field(default=None, max_length=255)
+    priority: MissionPriority = MissionPriority.BALANCED
 
 
 class RequirementRead(BaseModel):
@@ -73,6 +75,7 @@ class MissionRead(BaseModel):
     budget_amount: Decimal | None
     budget_currency: str
     location: str | None
+    priority: MissionPriority
     constraints: dict
     preferences: dict
     created_at: datetime

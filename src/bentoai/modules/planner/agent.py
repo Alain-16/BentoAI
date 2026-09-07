@@ -81,6 +81,9 @@ async def run_planning(request: PlanningRequest) -> PlanningResult:
     if request.location:
         lines.append(f"Delivering to: {request.location}")
 
+    if request.priority:
+        lines.append(f"They care most about: {request.priority}")
+
     result = await generate_structured(
         system=SYSTEM_PROMPT,
         user_message="\n".join(lines),

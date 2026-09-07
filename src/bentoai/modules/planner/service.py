@@ -31,6 +31,7 @@ class MissionService:
             budget_amount=payload.budget_amount,
             budget_currency=payload.budget_currency,
             location=payload.location,
+            priority=payload.priority,
         )
         await self.repo.add(mission)
 

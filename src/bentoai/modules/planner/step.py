@@ -32,6 +32,7 @@ class PlanningStep:
                 budget_amount=mission.budget_amount,
                 budget_currency=mission.budget_currency,
                 location=mission.location,
+                priority=mission.priority.value,
             )
         )
 
