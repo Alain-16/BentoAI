@@ -270,8 +270,18 @@ jobs:
             fi
             sleep 2
           done
-          echo "never became healthy. Recent logs:"
-          docker compose logs --tail 50
+          # Deliberately NOT "docker compose logs". Compose parses
+          # docker-compose.yml first, and ${IMAGE_URL:?} in it is unset in this
+          # ssh session - so the diagnostic would fail instead of diagnosing.
+          # The containers have fixed names, so plain docker logs needs neither
+          # the compose file nor any variable.
+          echo "never became healthy. Container state:"
+          docker ps -a --filter name=bentoai --format 'table {{.Names}}\t{{.Status}}'
+
+          echo "--- backend ---"
+          docker logs --tail 80 bentoai-backend 2>&1 || echo "(no such container)"
+          echo "--- database ---"
+          docker logs --tail 20 bentoai-db 2>&1 || echo "(no such container)"
           exit 1
           REMOTE
 

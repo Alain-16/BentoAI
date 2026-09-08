@@ -8,6 +8,19 @@ from functools import lru_cache
 
 DEV_PLACEHOLDER_SECRET="dev-secret-change-me"
 
+# Does anything in this codebase actually send an email yet?
+#
+# Not today. OTP sign-in is still deferred, api/deps.py hands back a stub user,
+# and nothing imports EmailSettings. While that stays true, demanding real SMTP
+# credentials in production refuses to start the app over a subsystem that
+# cannot break, because it does not exist.
+#
+# This is a fact about the code, not about a particular server, which is why it
+# lives here rather than in .env - no deployment should be able to claim
+# otherwise. Set it to True in the same change that writes the first send, and
+# the guard below starts insisting on a real mail backend again.
+EMAIL_IS_USED = False
+
 _BASE_CONFIG = SettingsConfigDict(
     env_file=".env",
     env_file_encoding="utf-8",
@@ -189,7 +202,7 @@ class Settings(BaseSettings):
         if self.app.debug:
             problems.append("APP_DEBUG must be false in production")
 
-        if self.email.backend == "console":
+        if EMAIL_IS_USED and self.email.backend == "console":
             problems.append("EMAIL_BACKEND=console cannot be used in production")
 
         # Collect every problem before raising. Fixing config one crash at a
