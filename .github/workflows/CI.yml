@@ -203,28 +203,48 @@ jobs:
           # version is ssh-keyscan once locally, stored as a secret.
           ssh-keyscan -H "${{ secrets.PROD_HOST }}" >> ~/.ssh/known_hosts
 
+      - name: Make sure the deploy directory exists
+        run: |
+          # scp will not create a missing directory, it only writes files. One
+          # mkdir here means a fresh server needs nothing prepared by hand
+          # except .env.
+          ssh -i ~/.ssh/bentoai_ci -o IdentitiesOnly=yes \
+            "${{ secrets.PROD_USER }}@${{ secrets.PROD_HOST }}" \
+            'mkdir -p ~/bentoai'
+
       - name: Copy the compose file
         run: |
+          # No leading slash on the remote path, so it lands under the deploy
+          # user's home directory. That user owns their home, so writing there
+          # needs no sudo and no chown - which is what /opt/bentoai kept
+          # refusing, since /opt belongs to root.
           scp -i ~/.ssh/bentoai_ci -o IdentitiesOnly=yes \
             docker-compose.yml \
-            "${{ secrets.PROD_USER }}@${{ secrets.PROD_HOST }}:/opt/bentoai/docker-compose.yml"
+            "${{ secrets.PROD_USER }}@${{ secrets.PROD_HOST }}:bentoai/docker-compose.yml"
 
       - name: Deploy
         env:
           IMAGE_URL: ghcr.io/alain-16/bentoai:${{ github.sha }}
           GHCR_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
+          # "bash -s" tells the remote shell to read its script from stdin, and
+          # the heredoc below is that stdin.
+          #
+          # REMOTE is unquoted, so the runner fills in $IMAGE_URL and
+          # $GHCR_TOKEN before the text is sent. That is what keeps the token
+          # off the ssh command line, where the server's process list would
+          # show it. Anything meant to be worked out on the server instead has
+          # to be written \$like_this.
           ssh -i ~/.ssh/bentoai_ci -o IdentitiesOnly=yes \
-            "${{ secrets.PROD_USER }}@${{ secrets.PROD_HOST }}" \
-            "IMAGE_URL='${IMAGE_URL}' GHCR_ACTOR='${{ github.actor }}' GHCRs" <<'REMOTE'
+            "${{ secrets.PROD_USER }}@${{ secrets.PROD_HOST }}" bash -s <<REMOTE
           set -euo pipefail
-          cd /opt/bentoai
+          cd ~/bentoai
 
-          # This token dies with the workflow run, so nothing durable is le
-          # the server. --password-stdin keeps it out of the process list.
-          echo "$GHCR_TOKEN" | docker login ghcr.io -u "$GHCR_ACTOR" --pass
+          # This token dies with the workflow run, so nothing durable is left
+          # on the server. --password-stdin keeps it out of the process list.
+          echo '$GHCR_TOKEN' | docker login ghcr.io -u '${{ github.actor }}' --password-stdin
 
-          export IMAGE_URL
+          export IMAGE_URL='$IMAGE_URL'
           echo "deploying $IMAGE_URL"
 
           docker compose pull
@@ -235,26 +255,29 @@ jobs:
 
       - name: Health check
         run: |
+          # REMOTE is quoted this time, so the runner expands nothing. The loop
+          # counter belongs to the server's shell, not this one.
           ssh -i ~/.ssh/bentoai_ci -o IdentitiesOnly=yes \
-            "${{ secrets.PROD_USER }}@${{ secrets.PROD_HOST }}" 'bash -s' <
+            "${{ secrets.PROD_USER }}@${{ secrets.PROD_HOST }}" bash -s <<'REMOTE'
           set -euo pipefail
+          cd ~/bentoai
+
           # up -d returning means the container STARTED, not that it works.
           for i in $(seq 1 30); do
-            if curl -sf --max-time 5 http://localhost:8000/health > /dev/nu
+            if curl -sf --max-time 5 http://localhost:8000/health > /dev/null; then
               echo "healthy after $((i * 2))s"
               exit 0
             fi
             sleep 2
           done
           echo "never became healthy. Recent logs:"
-          docker compose -f /opt/bentoai/docker-compose.yml logs --tail 50
+          docker compose logs --tail 50
           exit 1
           REMOTE
 
       - name: Reachable from outside
         run: |
-          # The check above proves the app works. This proves people can ge
+          # The check above proves the app works. This proves people can get to
           # it - a different failure, usually a firewall.
           curl -sf --max-time 15 "http://${{ secrets.PROD_HOST }}:8000/health"
           echo
-
