@@ -4,25 +4,34 @@ services:
     container_name: bentoai-db
 
     environment:
-      POSTGRES_USER: bentoai
-      POSTGRES_PASSWORD: bentoai
-      POSTGRES_DB: bentoai
+      # One source of truth. These are read here to create the database and
+      # again below to connect to it - written twice, they drift, and the
+      # symptom is an authentication failure at boot with no hint why.
+      POSTGRES_USER: ${POSTGRES_USER:-bentoai}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-bentoai}
+      POSTGRES_DB: ${POSTGRES_DB:-bentoai}
 
     ports:
-      - "5432:5432"
+      # Bound to loopback on purpose. Published as "5432:5432" this listens on
+      # every interface - on a server with a public IP that is a database
+      # anyone can reach. This way psql still works on the machine itself and
+      # nothing outside it can connect.
+      - "127.0.0.1:5432:5432"
 
     volumes:
       - postgres_data:/var/lib/postgresql/data
 
     healthcheck:
-      test: ["CMD-SHELL", "pg_isready -U bentoai -d bentoai"]
+      test: ["CMD-SHELL", "pg_isready -U $${POSTGRES_USER:-bentoai} -d $${POSTGRES_DB:-bentoai}"]
       interval: 5s
       timeout: 5s
       retries: 5
       start_period: 10s
 
   api:
-    image: ${IMAGE_URL}
+    # :? makes a deploy with no image fail immediately and say so, rather than
+    # compose trying to pull an empty name and producing a confusing error.
+    image: ${IMAGE_URL:?set IMAGE_URL to the image to run}
     container_name: bentoai-backend
 
     depends_on:
@@ -33,13 +42,23 @@ services:
       - .env
 
     environment:
-      DB_URL: postgresql+asyncpg://bentoai:bentoai@postgres:5432/bentoai
-      APP_CORS_ORIGINS: http://localhost:3000
+      # Built from the same variables that created the database above.
+      DB_URL: postgresql+asyncpg://${POSTGRES_USER:-bentoai}:${POSTGRES_PASSWORD:-bentoai}@postgres:5432/${POSTGRES_DB:-bentoai}
+
+      # APP_CORS_ORIGINS deliberately does NOT appear here.
+      #
+      # Anything set in this block overrides env_file, so hard-coding
+      # localhost:3000 would mean the server ignores whatever .env says - and
+      # the deployed frontend would be refused by CORS with no way to fix it
+      # short of editing this file.
 
     ports:
       - "8000:8000"
 
-    restart: unless-stopped
+    # unless-stopped respects a deliberate stop, which is right on a laptop.
+    # A server wants "always", so a reboot brings the stack back - set
+    # RESTART_POLICY=always in the server's .env.
+    restart: ${RESTART_POLICY:-unless-stopped}
 
     healthcheck:
       test:
