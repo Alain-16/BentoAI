@@ -182,31 +182,79 @@ jobs:
           echo "merged PR #$PR into main"
   
   deploy:
-     needs: docker
-     if: github.event_name == 'push' && github.ref_name == 'main'
-     runs-on: ubuntu-latest
-     steps:
+    runs-on: ubuntu-latest
+    needs: docker
+    if: github.event_name == 'push' && github.ref_name == 'development'
+
+    permissions:
+      contents: read
+      # The token is handed to the server so it can pull a private image.
+      packages: read
+
+    steps:
       - uses: actions/checkout@v4
-      - name: Configure ssh
+
+      - name: Configure SSH
         run: |
-            mkdir -p ~/.ssh
-            echo "${{ secrets.PROD_SSH_KEY }}" > ~/.ssh/bentoai_ci
-            chmod 600 ~/.ssh/bentoai_ci
-            ssh-keyscan -H "${{ secrets.PROD_HOST }}" >> ~/.ssh/known_hosts
-            
-      - name: Copy docker-compose.yml
+          mkdir -p ~/.ssh
+          echo "${{ secrets.PROD_SSH_KEY }}" > ~/.ssh/bentoai_ci
+          chmod 600 ~/.ssh/bentoai_ci
+          # Accepts whatever key the host presents right now. The stronger
+          # version is ssh-keyscan once locally, stored as a secret.
+          ssh-keyscan -H "${{ secrets.PROD_HOST }}" >> ~/.ssh/known_hosts
+
+      - name: Copy the compose file
         run: |
-          scp -i ~/.ssh/bentoai_ci \
+          scp -i ~/.ssh/bentoai_ci -o IdentitiesOnly=yes \
             docker-compose.yml \
             "${{ secrets.PROD_USER }}@${{ secrets.PROD_HOST }}:/opt/bentoai/docker-compose.yml"
-            
-      - name: Deploy to contabo
+
+      - name: Deploy
+        env:
+          IMAGE_URL: ghcr.io/alain-16/bentoai:${{ github.sha }}
+          GHCR_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
-          ssh -i ~/.ssh/bentoai_ci \ 
+          ssh -i ~/.ssh/bentoai_ci -o IdentitiesOnly=yes \
             "${{ secrets.PROD_USER }}@${{ secrets.PROD_HOST }}" \
-            "cd /opt/bentoai && \
-            IMAGE_URI=ghcr.io/alain-16/bentoai:${{ github.sha }} \
-            docker compose pull && \
-            IMAGE_URL=ghcr.io/alain-16/bentoai:${{ github.sha }} \
-            docker compose up -d"
+            "IMAGE_URL='${IMAGE_URL}' GHCR_ACTOR='${{ github.actor }}' GHCRs" <<'REMOTE'
+          set -euo pipefail
+          cd /opt/bentoai
+
+          # This token dies with the workflow run, so nothing durable is le
+          # the server. --password-stdin keeps it out of the process list.
+          echo "$GHCR_TOKEN" | docker login ghcr.io -u "$GHCR_ACTOR" --pass
+
+          export IMAGE_URL
+          echo "deploying $IMAGE_URL"
+
+          docker compose pull
+          docker compose up -d
+
+          docker logout ghcr.io
+          REMOTE
+
+      - name: Health check
+        run: |
+          ssh -i ~/.ssh/bentoai_ci -o IdentitiesOnly=yes \
+            "${{ secrets.PROD_USER }}@${{ secrets.PROD_HOST }}" 'bash -s' <
+          set -euo pipefail
+          # up -d returning means the container STARTED, not that it works.
+          for i in $(seq 1 30); do
+            if curl -sf --max-time 5 http://localhost:8000/health > /dev/nu
+              echo "healthy after $((i * 2))s"
+              exit 0
+            fi
+            sleep 2
+          done
+          echo "never became healthy. Recent logs:"
+          docker compose -f /opt/bentoai/docker-compose.yml logs --tail 50
+          exit 1
+          REMOTE
+
+      - name: Reachable from outside
+        run: |
+          # The check above proves the app works. This proves people can ge
+          # it - a different failure, usually a firewall.
+          curl -sf --max-time 15 "http://${{ secrets.PROD_HOST }}:8000/health"
+          echo
 
