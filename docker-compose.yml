@@ -22,7 +22,7 @@ services:
       start_period: 10s
 
   api:
-    build: .
+    image: ${IMAGE_URL}
     container_name: bentoai-backend
 
     depends_on:
