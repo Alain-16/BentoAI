@@ -90,6 +90,9 @@ jobs:
         
   docker:
     runs-on: ubuntu-latest
+    # Gates publishing on the test suite. Without this the job runs in
+    # parallel with app, so a red test suite still ships an image.
+    needs: app
     permissions:
       contents: read
       packages: write
@@ -117,20 +120,6 @@ jobs:
           cache-to: type=gha,mode=max
           provenance: false
           
-      - name: Configure SSH
-        run: |
-          mkdir -p ~/.ssh
-          echo "${{ secrets.PROD_SSH_KEY }}" > ~/.ssh/bentoai_alain
-          chmod 600 ~/.ssh/bentoai_alain
-          ssh-keyscan -H "${{ secrets.PROD_HOST }}" >> ~/.ssh/known_hosts
-
-      - name: Test connection
-        run: |
-          ssh -i ~/.ssh/bentoai_alain \
-          "${{ secrets.PROD_USER }}@${{ secrets.PROD_HOST }}" \
-          "docker ps"
-        
-     
   merge:
     runs-on: ubuntu-latest
     needs: docker
