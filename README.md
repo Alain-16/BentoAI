@@ -1,4 +1,4 @@
-# Bento AI can be accessed here: http://66.94.114.213:3000/
+# Bento AI can be accessed here: https://bento.alain250.ca/
 
 # Bento AI Shopping Platform — User Documentation
 
